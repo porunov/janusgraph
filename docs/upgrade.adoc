@@ -31,6 +31,10 @@ The value `luceneMatchVersion` in this config that tells Solr to behave accordin
 Users should generally set this value to the version of their Solr installation.
 If the config distributed by JanusGraph is used for an existing Solr installation that used a lower version before (like 5.0.0 from a previous versions of this file), it is highly recommended that a re-indexing is performed.
 
+==== ElasticSearch: Upgrade from 6.6.0 to 7.2.0
+The ElasticSearch version has been changed to 7.2.0 which removes support for `max-retry-timeout` option. That is why this option no longer available in JanusGraph.
+Users should be aware that by default JanusGraph setups maximum open scroll contexts to maximum value of `2147483647` with the parameter `setup-max-open-scroll-contexts` for ElasticSearch 7.y. This option can be disabled and updated manually in ElasticSearch but you should be aware that ElasticSearch starting from version 7 has a default limit of 500 opened contexts which most likely be reached by the normal usage of JanusGraph with ElasticSearch.
+
 === Upgrading to JanusGraph 0.3.0
 IMPORTANT: You should back-up your data prior to attempting an upgrade! Also please note that once an upgrade has been completed you will no longer be able to connect to your graph with client versions prior to 0.3.0.
 

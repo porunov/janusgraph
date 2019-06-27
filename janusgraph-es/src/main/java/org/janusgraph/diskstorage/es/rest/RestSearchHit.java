@@ -48,6 +48,12 @@ public class RestSearchHit {
         this.index = index;
     }
 
+    /**
+     * Is used only for ElasticSearch versions < 7
+     *
+     * @return index type
+     */
+    @Deprecated
     public String getType() {
         return type;
     }

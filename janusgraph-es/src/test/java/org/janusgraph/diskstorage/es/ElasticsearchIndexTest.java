@@ -57,6 +57,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.util.Date;
 import java.util.UUID;
@@ -179,6 +180,7 @@ public class ElasticsearchIndexTest extends IndexProviderTest {
         String message = Throwables.getRootCause(janusGraphException).getMessage();
 
         switch (JanusGraphElasticsearchContainer.getEsMajorVersion().value){
+            case 7:
             case 6:
                 assertTrue(message.contains("mapper_parsing_exception"));
                 break;
@@ -288,7 +290,7 @@ public class ElasticsearchIndexTest extends IndexProviderTest {
     }
 
     @Test
-    public void testCustomMappingProperty() throws BackendException, IOException, ParseException {
+    public void testCustomMappingProperty() throws BackendException, IOException, ParseException, URISyntaxException {
 
         String mappingTypeName = "vertex";
         String indexPrefix = "janusgraph";
@@ -388,8 +390,15 @@ public class ElasticsearchIndexTest extends IndexProviderTest {
     }
 
 
-    private CloseableHttpResponse getESMapping(String indexName, String mappingTypeName) throws IOException {
-        final HttpGet httpGet = new HttpGet(indexName+"/_mapping/"+mappingTypeName);
+    private CloseableHttpResponse getESMapping(String indexName, String mappingTypeName) throws IOException, URISyntaxException {
+
+        String uri = indexName+"/_mapping";
+
+        if(JanusGraphElasticsearchContainer.getEsMajorVersion().value <= 7){
+            uri += "/"+mappingTypeName;
+        }
+
+        final HttpGet httpGet = new HttpGet(uri);
         return httpClient.execute(host, httpGet);
     }
 
