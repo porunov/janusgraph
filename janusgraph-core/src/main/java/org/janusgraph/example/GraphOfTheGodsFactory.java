@@ -169,7 +169,7 @@ public class GraphOfTheGodsFactory {
      *
      * @param args a singleton array containing a path to a JanusGraph config properties file
      */
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         if (null == args || 1 != args.length) {
             System.err.println("Usage: GraphOfTheGodsFactory <janusgraph-config-file>");
             System.exit(1);

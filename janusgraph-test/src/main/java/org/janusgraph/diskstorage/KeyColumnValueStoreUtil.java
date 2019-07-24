@@ -16,6 +16,7 @@ package org.janusgraph.diskstorage;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -86,22 +87,14 @@ public class KeyColumnValueStoreUtil {
 
     // TODO rename as "bufferToString" after syntax errors are resolved
     public static String byteBufferToString(StaticBuffer b) {
-        try {
-            ByteBuffer bb = b.asByteBuffer();
-            return new String(bb.array(), bb.position() + bb.arrayOffset(), bb.remaining(), "UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
+        ByteBuffer bb = b.asByteBuffer();
+        return new String(bb.array(), bb.position() + bb.arrayOffset(), bb.remaining(), StandardCharsets.UTF_8);
     }
 
     // TODO rename as "stringToBuffer" after syntax errors are resolved
     public static StaticBuffer stringToByteBuffer(String s) {
         byte[] b;
-        try {
-            b = s.getBytes("UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
+        b = s.getBytes(StandardCharsets.UTF_8);
         ByteBuffer bb = ByteBuffer.allocate(b.length);
         bb.put(b);
         bb.flip();

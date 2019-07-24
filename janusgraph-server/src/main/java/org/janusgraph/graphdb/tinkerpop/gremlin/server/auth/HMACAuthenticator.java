@@ -181,12 +181,12 @@ public class HMACAuthenticator extends JanusGraphAbstractAuthenticator {
             secretAndSalt.put(secret);
             secretAndSalt.put(":");
             secretAndSalt.put(salt);
-            final String tokenPrefix = username + ":" + time.toString() + ":";
+            final String tokenPrefix = username + ":" + time + ":";
             final SecretKeySpec keySpec = new SecretKeySpec(toBytes(secretAndSalt.array()), hmacAlgo);
             final Mac hmac = Mac.getInstance(hmacAlgo);
             hmac.init(keySpec);
             hmac.update(username.getBytes());
-            hmac.update(time.toString().getBytes());
+            hmac.update(time.getBytes());
             final Base64.Encoder encoder = Base64.getUrlEncoder();
             final byte[] hmacbytes = encoder.encode(hmac.doFinal());
             final byte[] tokenbytes = tokenPrefix.getBytes();

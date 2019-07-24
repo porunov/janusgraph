@@ -50,7 +50,7 @@ public class ConfigurationPrinter {
     private final boolean showMutability;
     private final PrintStream stream;
 
-    public static void main(String args[]) throws IOException, ReflectiveOperationException {
+    public static void main(String[] args) throws IOException, ReflectiveOperationException {
 
         ReflectiveConfigOptionLoader.INSTANCE.loadStandard(ConfigurationPrinter.class);
 

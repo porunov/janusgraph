@@ -36,7 +36,7 @@ public class CheckSocket {
     public static final String MSG_USAGE =
         "Usage: " + CheckSocket.class.getSimpleName() + " hostname port";
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         if (2 != args.length) {
             System.err.println(MSG_USAGE);
             System.exit(E_USAGE);

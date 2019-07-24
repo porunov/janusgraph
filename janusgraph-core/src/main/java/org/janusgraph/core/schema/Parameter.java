@@ -62,7 +62,7 @@ public class Parameter<V> {
 
     @Override
     public String toString() {
-        return key+"->"+String.valueOf(value);
+        return key+"->"+ value;
     }
 
 }

@@ -1054,7 +1054,7 @@ public class ConsistentKeyLockerTest {
         if (null != del) {
             deletions = eq(Collections.singletonList(del));
         } else {
-            deletions = eq(ImmutableList.<StaticBuffer>of());
+            deletions = eq(ImmutableList.of());
         }
 
         store.mutate(k, adds, deletions, eq(tx));
@@ -1082,7 +1082,7 @@ public class ConsistentKeyLockerTest {
         StaticBuffer k = eq(defaultLockKey);
         final List<Entry> adds = eq(Collections.singletonList(add));
         final List<StaticBuffer> deletions;
-        deletions = eq(ImmutableList.<StaticBuffer>of());
+        deletions = eq(ImmutableList.of());
         store.mutate(k, adds, deletions, eq(defaultTx));
         expectLastCall().andThrow(t);
 
