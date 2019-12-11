@@ -187,6 +187,7 @@ public class JanusGraphVertexDeserializer implements AutoCloseable {
             log.trace("Vertex {} has no relations", vertexId);
             return null;
         }
+
         return tv;
     }
 
