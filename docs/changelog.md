@@ -43,7 +43,7 @@ compile "org.janusgraph:janusgraph-core:0.5.0"
 
 **Tested Compatibility:**
 
-* Apache Cassandra 2.2.10, 3.0.14, 3.11.0
+* Apache Cassandra 2.2.16, 3.0.14, 3.11.6
 * Apache HBase 1.2.6, 1.3.1, 1.4.10, 2.1.5
 * Google Bigtable 1.3.0, 1.4.0, 1.5.0, 1.6.0, 1.7.0, 1.8.0, 1.9.0, 1.10.0, 1.11.0
 * Oracle BerkeleyJE 7.5.11

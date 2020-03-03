@@ -74,7 +74,7 @@
         <junit.version>5.5.1</junit.version>
         <mrunit.version>1.1.0</mrunit.version>
         <mockito.version>2.23.0</mockito.version>
-        <cassandra.version>2.2.13</cassandra.version>
+        <cassandra.version>2.2.16</cassandra.version>
         <jamm.version>0.3.0</jamm.version>
         <metrics.version>3.2.2</metrics.version>
         <slf4j.version>1.7.12</slf4j.version>
@@ -124,7 +124,7 @@
         <test.excluded.groups>MEMORY_TESTS,PERFORMANCE_TESTS,BRITTLE_TESTS</test.excluded.groups>
         <dependency.locations.enabled>false</dependency.locations.enabled>
         <cassandra-driver.version>3.8.0</cassandra-driver.version>
-        <testcontainers.version>1.12.4</testcontainers.version>
+        <testcontainers.version>1.12.5</testcontainers.version>
         <easymock.version>3.4</easymock.version>
     </properties>
     <modules>

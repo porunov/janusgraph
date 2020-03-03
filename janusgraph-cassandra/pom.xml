@@ -21,8 +21,8 @@
         <test.jvm.opts>${default.test.jvm.opts}</test.jvm.opts>
         <test.byteordered>byteordered</test.byteordered>
         <test.murmur>murmur</test.murmur>
-        <test.docker.version.cassandra2>2.2.14</test.docker.version.cassandra2>
-        <test.docker.version.cassandra3>3.11.4</test.docker.version.cassandra3>
+        <test.docker.version.cassandra2>2.2.16</test.docker.version.cassandra2>
+        <test.docker.version.cassandra3>3.11.6</test.docker.version.cassandra3>
     </properties>
     <!-- Libraries -->
     
