@@ -211,6 +211,9 @@
             </plugin>
             <plugin>
                 <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <source>${compiler.source}</source>
+                </configuration>
                 <executions>
                     <execution>
                         <id>attach-javadocs</id>
