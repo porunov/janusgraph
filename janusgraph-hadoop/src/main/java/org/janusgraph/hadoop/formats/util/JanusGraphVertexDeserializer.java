@@ -135,7 +135,7 @@ public class JanusGraphVertexDeserializer implements AutoCloseable {
                     VertexProperty<Object> vp = tv.property(card, type.name(), value, T.id, relation.relationId);
 
                     // Decode meta properties
-                    decodeProperties(relation, vp);
+                    //decodeProperties(relation, vp);
                 } else {
                     assert type.isEdgeLabel();
 
