@@ -493,7 +493,7 @@
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.6</version>
+                    <version>0.8.5</version>
                 </plugin>
             </plugins>
         </pluginManagement>
@@ -918,7 +918,7 @@
             <dependency>
                 <groupId>org.jacoco</groupId>
                 <artifactId>org.jacoco.ant</artifactId>
-                <version>0.8.6</version>
+                <version>0.8.5</version>
             </dependency>
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
@@ -1403,7 +1403,7 @@
                             <dependency>
                                 <groupId>org.jacoco</groupId>
                                 <artifactId>org.jacoco.ant</artifactId>
-                                <version>0.8.6</version>
+                                <version>0.8.5</version>
                             </dependency>
                         </dependencies>
                     </plugin>
