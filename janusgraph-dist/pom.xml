@@ -69,7 +69,16 @@
                     <groupId>com.google.code.gson</groupId>
                     <artifactId>gson</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.xerial.snappy</groupId>
+                    <artifactId>snappy-java</artifactId>
+                </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.xerial.snappy</groupId>
+            <artifactId>snappy-java</artifactId>
+            <version>${snappy-java.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.tinkerpop</groupId>
@@ -86,6 +95,10 @@
                 <exclusion>
                     <groupId>com.github.spotbugs</groupId>
                     <artifactId>spotbugs-annotations</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.xerial.snappy</groupId>
+                    <artifactId>snappy-java</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -113,7 +126,7 @@
             <artifactId>jamm</artifactId>
             <version>${jamm.version}</version>
         </dependency>
-        
+
         <!-- Test dependencies -->
         <dependency>
             <groupId>${project.groupId}</groupId>
