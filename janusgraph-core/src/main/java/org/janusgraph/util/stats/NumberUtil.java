@@ -24,7 +24,6 @@ public class NumberUtil {
     public static boolean isPowerOf2(long value) {
         return value>0 && Long.highestOneBit(value)==value;
     }
-
     /**
      * Returns an integer X such that 2^X=value. Throws an exception
      * if value is not a power of 2.
@@ -36,5 +35,4 @@ public class NumberUtil {
         Preconditions.checkArgument(isPowerOf2(value), "Value %d is not power of 2", value);
         return Long.SIZE-(Long.numberOfLeadingZeros(value)+1);
     }
-
 }
