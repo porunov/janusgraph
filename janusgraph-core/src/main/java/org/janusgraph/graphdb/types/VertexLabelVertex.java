@@ -24,13 +24,13 @@ import org.janusgraph.graphdb.types.vertices.JanusGraphSchemaVertex;
 
 import java.util.Collection;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 /**
  * @author Matthias Broecheler (me@matthiasb.com)
  */
 public class VertexLabelVertex extends JanusGraphSchemaVertex implements InternalVertexLabel {
 
+    private Integer ttl = null;
 
     public VertexLabelVertex(StandardJanusGraphTx tx, long id, byte lifecycle) {
         super(tx, id, lifecycle);
@@ -48,14 +48,14 @@ public class VertexLabelVertex extends JanusGraphSchemaVertex implements Interna
 
     @Override
     public Collection<PropertyKey> mappedProperties() {
-        return StreamSupport.stream( getRelated(TypeDefinitionCategory.PROPERTY_KEY_EDGE, Direction.OUT).spliterator(), false)
+        return getRelated(TypeDefinitionCategory.PROPERTY_KEY_EDGE, Direction.OUT).stream()
             .map(entry -> (PropertyKey) entry.getSchemaType())
             .collect(Collectors.toList());
     }
 
     @Override
     public Collection<Connection> mappedConnections() {
-        return StreamSupport.stream(getRelated(TypeDefinitionCategory.CONNECTION_EDGE, Direction.OUT).spliterator(), false)
+        return getRelated(TypeDefinitionCategory.CONNECTION_EDGE, Direction.OUT).stream()
             .map(entry -> new Connection((String) entry.getModifier(), this, (VertexLabel) entry.getSchemaType()))
             .collect(Collectors.toList());
     }
@@ -64,8 +64,6 @@ public class VertexLabelVertex extends JanusGraphSchemaVertex implements Interna
     public boolean hasDefaultConfiguration() {
         return !isPartitioned() && !isStatic();
     }
-
-    private Integer ttl = null;
 
     @Override
     public int getTTL() {

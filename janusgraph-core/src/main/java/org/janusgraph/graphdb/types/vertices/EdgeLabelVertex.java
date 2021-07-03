@@ -44,7 +44,7 @@ public class EdgeLabelVertex extends RelationTypeVertex implements EdgeLabel {
 
     @Override
     public Collection<PropertyKey> mappedProperties() {
-        return StreamSupport.stream(getRelated(TypeDefinitionCategory.PROPERTY_KEY_EDGE, Direction.OUT).spliterator(), false)
+        return getRelated(TypeDefinitionCategory.PROPERTY_KEY_EDGE, Direction.OUT).stream()
             .map(entry -> (PropertyKey) entry.getSchemaType())
             .collect(Collectors.toList());
     }
@@ -52,7 +52,7 @@ public class EdgeLabelVertex extends RelationTypeVertex implements EdgeLabel {
     @Override
     public Collection<Connection> mappedConnections() {
         String name = name();
-        return StreamSupport.stream(getRelated(TypeDefinitionCategory.UPDATE_CONNECTION_EDGE, Direction.OUT).spliterator(), false)
+        return getRelated(TypeDefinitionCategory.UPDATE_CONNECTION_EDGE, Direction.OUT).stream()
             .map(entry -> (JanusGraphSchemaVertex) entry.getSchemaType())
             .flatMap(s -> StreamSupport.stream(s.getEdges(TypeDefinitionCategory.CONNECTION_EDGE, Direction.OUT).spliterator(), false))
             .map(Connection::new)
