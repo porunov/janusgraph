@@ -1,0 +1,7 @@
+version: v1beta1
+
+plugins:
+  - name: java
+    out: src/main/java
+  - name: grpc-java
+    out: src/main/java

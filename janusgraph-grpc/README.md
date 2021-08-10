@@ -1,5 +1,7 @@
 # JanusGraph gRPC
 
+To re-generate Java proto files you need to install [Buf](https://buf.build) on your system and run `buf generate` in this module.
+
 ## General
 
 ### Done

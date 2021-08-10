@@ -15,6 +15,9 @@
 # See https://docs.buf.build/lint-usage
 # See https://docs.buf.build/breaking-usage
 version: v1beta1
+build:
+  roots:
+    - ./src/main/proto/
 lint:
   use:
     - BASIC
