@@ -24,6 +24,7 @@ import java.time.Instant;
 
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.DROP_ON_CLEAR;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_BACKEND;
+import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_BATCH;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_DIRECTORY;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_TRANSACTIONAL;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.TX_CACHE_SIZE;
@@ -51,7 +52,8 @@ public class BerkeleyStorageSetup extends StorageSetup {
         return buildGraphConfiguration()
                 .set(STORAGE_BACKEND,"berkeleyje")
                 .set(STORAGE_DIRECTORY, dir)
-                .set(DROP_ON_CLEAR, false);
+                .set(DROP_ON_CLEAR, false)
+                .set(STORAGE_BATCH, true);
     }
 
     public static ModifiableConfiguration getBerkeleyJEConfiguration() {

@@ -16,6 +16,7 @@ package org.janusgraph.graphdb.cql;
 
 import io.github.artsok.RepeatedIfExceptionsTest;
 import org.janusgraph.JanusGraphCassandraContainer;
+import org.janusgraph.diskstorage.configuration.ConfigElement;
 import org.janusgraph.diskstorage.configuration.WriteConfiguration;
 import org.janusgraph.graphdb.JanusGraphTest;
 import org.junit.jupiter.api.Disabled;
@@ -32,7 +33,9 @@ import java.util.stream.Stream;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.ATOMIC_BATCH_MUTATE;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.BATCH_STATEMENT_SIZE;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.EXECUTOR_SERVICE_ENABLED;
+import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.ALLOW_STALE_CONFIG;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.ASSIGN_TIMESTAMP;
+import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_BATCH;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
@@ -43,7 +46,9 @@ public class CQLGraphTest extends JanusGraphTest {
 
     @Override
     public WriteConfiguration getConfiguration() {
-        return cqlContainer.getConfiguration(getClass().getSimpleName()).getConfiguration();
+        WriteConfiguration writeConfiguration = cqlContainer.getConfiguration(getClass().getSimpleName()).getConfiguration();
+        writeConfiguration.set(ConfigElement.getPath(STORAGE_BATCH), true);
+        return writeConfiguration;
     }
 
     @Test

@@ -24,6 +24,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_BATCH;
+
 /**
  * @author Matthias Broecheler (me@matthiasb.com)
  */
@@ -32,6 +34,7 @@ public class InMemoryGraphTest extends JanusGraphTest {
     public WriteConfiguration getConfiguration() {
         ModifiableConfiguration config = GraphDatabaseConfiguration.buildGraphConfiguration();
         config.set(GraphDatabaseConfiguration.STORAGE_BACKEND,"inmemory");
+        config.set(GraphDatabaseConfiguration.STORAGE_BATCH,true);
         return config.getConfiguration();
     }
 

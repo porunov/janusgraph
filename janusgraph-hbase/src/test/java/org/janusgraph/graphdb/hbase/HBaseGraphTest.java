@@ -15,6 +15,7 @@
 package org.janusgraph.graphdb.hbase;
 
 import org.janusgraph.HBaseContainer;
+import org.janusgraph.diskstorage.configuration.ConfigElement;
 import org.janusgraph.diskstorage.configuration.WriteConfiguration;
 import org.janusgraph.graphdb.JanusGraphTest;
 import org.junit.jupiter.api.Disabled;
@@ -29,6 +30,7 @@ import java.util.Arrays;
 import java.util.stream.Stream;
 
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.ASSIGN_TIMESTAMP;
+import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_BATCH;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 @Testcontainers
@@ -38,7 +40,9 @@ public class HBaseGraphTest extends JanusGraphTest {
 
     @Override
     public WriteConfiguration getConfiguration() {
-        return hBaseContainer.getWriteConfiguration();
+        WriteConfiguration writeConfiguration = hBaseContainer.getWriteConfiguration();
+        writeConfiguration.set(ConfigElement.getPath(STORAGE_BATCH), true);
+        return writeConfiguration;
     }
 
     @Override @Test @Disabled("HBase does not support retrieving cell TTL by client")

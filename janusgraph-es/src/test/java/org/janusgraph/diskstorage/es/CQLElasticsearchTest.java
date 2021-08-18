@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Disabled;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.STORAGE_BATCH;
+
 @Testcontainers
 public class CQLElasticsearchTest extends ElasticsearchJanusGraphIndexTest {
 
@@ -28,7 +30,9 @@ public class CQLElasticsearchTest extends ElasticsearchJanusGraphIndexTest {
 
     @Override
     public ModifiableConfiguration getStorageConfiguration() {
-        return cql.getConfiguration(CQLElasticsearchTest.class.getName());
+        ModifiableConfiguration configuration = cql.getConfiguration(CQLElasticsearchTest.class.getName());
+        configuration.set(STORAGE_BATCH, true);
+        return configuration;
     }
 
     @Override
