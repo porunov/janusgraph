@@ -108,14 +108,10 @@ public class JanusGraphVertexStep<E extends Element> extends VertexStep<E> imple
      * This initialisation method is called when an attempt to retrieve a vertex from the cached multiQuery results
      * doesn't find an entry.
      */
-    private void prefetchNextBatch(final Traverser.Admin<Vertex> traverser) {
+    private void prefetchNextBatch() {
         final JanusGraphMultiVertexQuery multiQuery = JanusGraphTraversalUtil.getTx(getTraversal()).multiQuery();
-        if(verticesToPrefetch.isEmpty() && traverser!=null){
-            multiQuery.addVertex(traverser.get());
-        } else {
-            multiQuery.addAllVertices(verticesToPrefetch);
-            verticesToPrefetch.clear();
-        }
+        multiQuery.addAllVertices(verticesToPrefetch);
+        verticesToPrefetch.clear();
 
         makeQuery(multiQuery);
 
@@ -134,7 +130,7 @@ public class JanusGraphVertexStep<E extends Element> extends VertexStep<E> imple
 
         if (useMultiQuery) {
             if (multiQueryResults == null || !multiQueryResults.containsKey(traverser.get())) {
-                prefetchNextBatch(traverser); // current batch is exhausted, fetch new batch
+                prefetchNextBatch(); // current batch is exhausted, fetch new batch
             }
             result = multiQueryResults.get(traverser.get());
         } else {
