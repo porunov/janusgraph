@@ -1,4 +1,4 @@
-# Copyright 2021 JanusGraph Authors
+# Copyright 2022 JanusGraph Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,25 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Lint proto
+name: CI Release
 
 on:
   push:
-    paths:
-    - 'janusgraph-grpc/**'
-    - '.github/workflows/lint-proto.yml'
-  pull_request:
-    paths:
-    - 'janusgraph-grpc/**'
-    - '.github/workflows/lint-proto.yml'
+    tags:
+      - v*.*.*
+
+env:
+  ES_JAVA_OPTS: "-Xms256m -Xmx512m"
+  BUILD_MAVEN_OPTS: "-DskipTests=true --batch-mode --also-make"
+  VERIFY_MAVEN_OPTS: "-Pcoverage"
 
 jobs:
-  lint-proto:
-    name: buf check lint
-    runs-on: ubuntu-latest
+  build-all:
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - uses: ory/build-buf-action@v0
+      - uses: actions/cache@v2
         with:
-          bufVersion: v0.31.1
-          bufArgs: check lint --config janusgraph-grpc/buf.yaml ./janusgraph-grpc/src/main/proto/
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - uses: actions/setup-java@v2
+        with:
+          distribution: 'zulu'
+          java-version: '8.58.0+13'
+          java-package: jdk
