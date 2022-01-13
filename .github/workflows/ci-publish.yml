@@ -1,0 +1,87 @@
+# Copyright 2022 JanusGraph Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: CI Release artifacts publish
+
+on:
+  push:
+    tags:
+      - v*.*.*
+
+jobs:
+  build-all:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - uses: actions/setup-java@v2
+        with:
+          distribution: 'zulu'
+          java-version: '8.0.312+7'
+          java-package: jdk
+      - name: Set JanusGraph versions environment variables
+        run: |
+          export TAG=${{github.ref_name}}
+          export JG_VER="${TAG//v/}"
+          export JG_DIST_NAME="janusgraph-${JG_VER}"
+          export JG_FULL_DIST_NAME="janusgraph-full-${JG_VER}"
+          export JG_DOC_DIST_NAME="${JG_DIST_NAME}-doc"
+          echo JanusGraph release version $JG_VER. Dist name $JG_DIST_NAME. Full dist name $JG_FULL_DIST_NAME. Docs dist name $JG_DOC_DIST_NAME.
+      - run: mvn clean install -Pjanusgraph-release -DskipTests=true
+      - run: mvn deploy -Pjanusgraph-release -DskipTests=true
+      - run: mkdocs build
+      - run: mv site ${JG_DOC_DIST_NAME}
+      - run: zip -r ${JG_DOC_DIST_NAME}.zip ${JG_DOC_DIST_NAME}
+      - run: mkdir ../releaseArtifacts
+      - run: cp ${JG_DIST_NAME}.zip ${JG_FULL_DIST_NAME}.zip ${JG_DOC_DIST_NAME}.zip KEYS ../releaseArtifacts
+      - run: cd ../releaseArtifacts;
+      - run: gpg --armor --detach-sign ${JG_DIST_NAME}.zip; gpg --armor --detach-sign ${JG_FULL_DIST_NAME}.zip; gpg --armor --detach-sign ${JG_DOC_DIST_NAME}.zip;
+      - run: gpg --verify ${JG_DIST_NAME}.zip.asc ${JG_DIST_NAME}.zip
+      - run: gpg --verify ${JG_FULL_DIST_NAME}.zip.asc ${JG_FULL_DIST_NAME}.zip
+      - run: gpg --verify ${JG_DOC_DIST_NAME}.zip.asc ${JG_DOC_DIST_NAME}.zip
+      - uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          draft: true
+          tag: ${TAG}
+          artifacts: "./*"
+          name: ${JG_VER}
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+          owner: janusgraph-bot
+          prerelease: true
+          replacesArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            # Version ${JG_VER} (MM DD, YYYY)
+            ![Number of release downloads](https://img.shields.io/github/downloads/JanusGraph/janusgraph/${TAG}/total.svg)
+
+            Full documentation can be found at https://docs.janusgraph.org/
+
+            ```xml
+            <dependency>
+               <groupId>org.janusgraph</groupId>
+               <artifactId>janusgraph-core</artifactId>
+               <version>${JG_VER}</version>
+            </dependency>
+            ```
+
+            For more information on features and bug fixes in ${JG_VER}, see [this GitHub milestone](https://github.com/JanusGraph/janusgraph/milestone/*MILESTONE_NUMBER*?closed=1).
