@@ -36,7 +36,7 @@ import java.util.List;
 
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.BATCH_STATEMENT_SIZE;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.SESSION_LEAK_THRESHOLD;
-
+// test change
 @Testcontainers
 public class CQLMultiWriteStoreTest extends MultiWriteKeyColumnValueStoreTest {
 
