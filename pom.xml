@@ -88,7 +88,7 @@
         <!-- align with org.apache.hbase:hbase -->
         <jackson1.version>1.9.13</jackson1.version>
         <!-- align with org.apache.spark:spark-core_2.12 -->
-        <jackson2.version>2.13.0</jackson2.version>
+        <jackson2.version>2.13.1</jackson2.version>
         <lucene-solr.version>8.11.0</lucene-solr.version>
         <elasticsearch.version>7.14.0</elasticsearch.version>
         <commons.beanutils.version>1.9.4</commons.beanutils.version>
@@ -117,12 +117,14 @@
         <cassandra.version>3.11.10</cassandra.version>
         <cassandra-driver.version>4.13.0</cassandra-driver.version>
         <scylladb.version>4.4.0</scylladb.version>
-        <testcontainers.version>1.16.0</testcontainers.version>
+        <testcontainers.version>1.16.2</testcontainers.version>
         <easymock.version>4.3</easymock.version>
         <protobuf.version>3.19.2</protobuf.version>
-        <grpc.version>1.42.1</grpc.version>
+        <grpc.version>1.43.2</grpc.version>
         <protoc.version>3.15.3</protoc.version>
         <jmh.version>1.33</jmh.version>
+        <!-- align with org.apache.solr:solr-solrj -->
+        <jetty.version>9.4.44.v20210927</jetty.version>
     </properties>
     <modules>
         <module>janusgraph-grpc</module>
@@ -1187,17 +1189,17 @@
             <dependency>
                 <groupId>org.eclipse.jetty</groupId>
                 <artifactId>jetty-servlet</artifactId>
-                <version>9.4.44.v20210927</version>
+                <version>${jetty.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.eclipse.jetty</groupId>
                 <artifactId>jetty-server</artifactId>
-                <version>9.4.44.v20210927</version>
+                <version>${jetty.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.eclipse.jetty</groupId>
                 <artifactId>jetty-util</artifactId>
-                <version>9.4.44.v20210927</version>
+                <version>${jetty.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
