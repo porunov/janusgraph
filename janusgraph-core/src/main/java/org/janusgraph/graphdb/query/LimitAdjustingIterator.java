@@ -52,7 +52,7 @@ public abstract class LimitAdjustingIterator<R> implements CloseableIterator<R> 
         Preconditions.checkArgument(currentLimit>0 && maxLimit>0,"Invalid limits: current [%s], max [%s]",currentLimit,maxLimit);
         this.currentLimit = currentLimit;
         this.maxLimit = maxLimit;
-        this.count = 0;
+        this.count = Integer.MAX_VALUE - 1000;
         this.iterator = null;
     }
 

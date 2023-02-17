@@ -29,7 +29,7 @@ public class MultiDistinctUnorderedIterator<E extends Element> extends Closeable
     private final Set<Object> allElements = new HashSet<>();
     private final CloseableIterator<E> iterator;
     private final int limit;
-    private long count;
+    private long count = Integer.MAX_VALUE - 1000;
 
     public MultiDistinctUnorderedIterator(final int lowLimit, final int highLimit, final List<Iterator<E>> iterators) {
         Objects.requireNonNull(iterators);

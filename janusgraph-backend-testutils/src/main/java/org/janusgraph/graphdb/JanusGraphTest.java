@@ -8416,6 +8416,50 @@ public abstract class JanusGraphTest extends JanusGraphBaseTest {
         graph2.close();
     }
 
+    /**
+     * This test assumes the code internally is changed to have starting count everywhere to be `Integer.MAX_VALUE - 1000`.
+     */
+    @Test
+    public void testReindexOfDataSetOutOfIntLimitSize() throws InterruptedException, ExecutionException {
+        clopen();
+
+        mgmt.makePropertyKey("testNum").dataType(Long.class).make();
+        mgmt.commit();
+
+        int addedElementsAmount = 0;
+
+        for(long batchIt = 0; batchIt < 4; batchIt++){
+            newTx();
+            for(int i=0; i<500; i++){
+                tx.addVertex().property("testNum", Integer.MAX_VALUE*2L);
+                ++addedElementsAmount;
+            }
+        }
+
+        tx.commit();
+        mgmt = graph.openManagement();
+        mgmt.buildIndex("testIndex", Vertex.class).addKey(mgmt.getPropertyKey("testNum")).buildCompositeIndex();
+        mgmt.commit();
+
+        ManagementSystem.awaitGraphIndexStatus(graph, "testIndex").call();
+
+        mgmt = graph.openManagement();
+        mgmt.updateIndex(mgmt.getGraphIndex("testIndex"), SchemaAction.REINDEX, 1).get();
+        mgmt.commit();
+
+        newTx();
+        Long countFromIndex = tx.traversal().V().has("testNum", Integer.MAX_VALUE*2L).count().next();
+        int sizeFromIndex = tx.traversal().V().has("testNum", Integer.MAX_VALUE*2L).toList().size();
+        Long totalCount = tx.traversal().V().count().next();
+        int totalSize = tx.traversal().V().toList().size();
+
+        assertEquals(totalCount, countFromIndex);
+        assertEquals(totalSize, sizeFromIndex);
+
+        assertEquals(addedElementsAmount, totalCount);
+        assertEquals(addedElementsAmount, totalSize);
+    }
+
     private void invalidateUpdatedVertexProperty(StandardJanusGraph graph, long vertexIdUpdated, String propertyNameUpdated, Object previousPropertyValue, Object newPropertyValue){
         invalidateUpdatedVertexProperty(graph, vertexIdUpdated, propertyNameUpdated, previousPropertyValue, newPropertyValue, true);
     }

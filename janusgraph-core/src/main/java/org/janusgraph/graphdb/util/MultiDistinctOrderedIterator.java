@@ -39,7 +39,7 @@ public class MultiDistinctOrderedIterator<E extends Element> implements Closeabl
     private final TreeMap<E, Integer> currentElements;
     private final Set<Object> allElements = new HashSet<>();
     private final Integer limit;
-    private long count = 0;
+    private long count = Integer.MAX_VALUE - 1000;
 
     public MultiDistinctOrderedIterator(final Integer lowLimit, final Integer highLimit, final List<Iterator<E>> iterators, final List<OrderEntry> orders) {
         this.limit = highLimit;

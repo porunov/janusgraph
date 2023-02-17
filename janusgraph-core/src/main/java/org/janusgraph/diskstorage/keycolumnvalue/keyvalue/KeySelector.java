@@ -36,7 +36,7 @@ public class KeySelector {
         Preconditions.checkArgument(keyFilter!=null);
         this.keyFilter = keyFilter;
         this.limit = limit;
-        count = 0;
+        count = Integer.MAX_VALUE - 1000;
     }
 
     public static KeySelector of(int limit) {
