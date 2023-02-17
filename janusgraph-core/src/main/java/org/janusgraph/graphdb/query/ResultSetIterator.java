@@ -39,7 +39,7 @@ public class ResultSetIterator<R extends JanusGraphElement> implements Closeable
     public ResultSetIterator(Iterator<R> inner, int limit) {
         this.iterator = inner;
         this.limit = limit;
-        count = 0;
+        count = Integer.MAX_VALUE - 1000;
 
         this.current = null;
         this.next = nextInternal();
