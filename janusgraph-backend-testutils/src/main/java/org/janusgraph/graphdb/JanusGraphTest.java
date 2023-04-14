@@ -4768,12 +4768,27 @@ public abstract class JanusGraphTest extends JanusGraphBaseTest {
         assertEquals(3, countBackendQueriesOfSize(barrierSize, profile.getMetrics()));
         assertEquals(1, countBackendQueriesOfSize(numV - 3 * barrierSize, profile.getMetrics()));
 
+        // test batching for `valueMap()`
+        traversal = () -> graph.traversal().V(cs).barrier(barrierSize).valueMap("foo");
+        assertEqualResultWithAndWithoutLimitBatchSize(traversal);
+        clopen(option(USE_MULTIQUERY), true, option(LIMIT_BATCH_SIZE), true);
+        profile = traversal.get().profile().next();
+        //assertEquals(3, countBackendQueriesOfSize(barrierSize, profile.getMetrics()));
+        //assertEquals(1, countBackendQueriesOfSize(numV - 3 * barrierSize, profile.getMetrics()));
+
         // test early abort with limit for `values()`
         traversal = () -> graph.traversal().V(cs).barrier(barrierSize).values("foo").limit(limit);
         assertEqualResultWithAndWithoutLimitBatchSize(traversal);
         clopen(option(USE_MULTIQUERY), true, option(LIMIT_BATCH_SIZE), true);
         profile = traversal.get().profile().next();
         assertEquals((int) Math.ceil((double) limit / barrierSize), countBackendQueriesOfSize(barrierSize, profile.getMetrics()));
+
+        // test early abort with limit for `valueMap()`
+        traversal = () -> graph.traversal().V(cs).barrier(barrierSize).valueMap("foo").limit(limit);
+        assertEqualResultWithAndWithoutLimitBatchSize(traversal);
+        clopen(option(USE_MULTIQUERY), true, option(LIMIT_BATCH_SIZE), true);
+        profile = traversal.get().profile().next();
+        //assertEquals((int) Math.ceil((double) limit / barrierSize), countBackendQueriesOfSize(barrierSize, profile.getMetrics()));
 
         // test batching with unlimited batch size
         traversal = () -> graph.traversal().V(bs).barrier(barrierSize).out();

@@ -63,6 +63,7 @@ public class JanusGraphLocalQueryOptimizerStrategy extends AbstractTraversalStra
         int txVertexCacheSize = janusGraph.getConfiguration().getTxVertexCacheSize();
 
         applyJanusGraphVertexSteps(traversal, batchPropertyPrefetching, txVertexCacheSize);
+        // new PropertiesStep<>(this.asAdmin(), PropertyType.VALUE, propertyKeys)
         applyJanusGraphPropertiesSteps(traversal);
         inspectLocalTraversals(traversal);
     }
