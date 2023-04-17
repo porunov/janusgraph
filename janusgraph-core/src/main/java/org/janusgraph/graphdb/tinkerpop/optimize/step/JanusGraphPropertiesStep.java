@@ -17,7 +17,6 @@ package org.janusgraph.graphdb.tinkerpop.optimize.step;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterators;
 import org.apache.tinkerpop.gremlin.process.traversal.Order;
-import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.Traverser;
 import org.apache.tinkerpop.gremlin.process.traversal.step.Profiling;
 import org.apache.tinkerpop.gremlin.process.traversal.step.TraversalParent;
@@ -27,7 +26,6 @@ import org.apache.tinkerpop.gremlin.process.traversal.util.MutableMetrics;
 import org.apache.tinkerpop.gremlin.process.traversal.util.TraversalInterruptedException;
 import org.apache.tinkerpop.gremlin.structure.Element;
 import org.apache.tinkerpop.gremlin.structure.Property;
-import org.apache.tinkerpop.gremlin.structure.PropertyType;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.apache.tinkerpop.gremlin.structure.util.StringFactory;
 import org.apache.tinkerpop.gremlin.structure.util.wrapped.WrappedVertex;
@@ -63,33 +61,31 @@ public class JanusGraphPropertiesStep<E> extends PropertiesStep<E> implements Ha
     private Map<JanusGraphVertex, Iterable<? extends JanusGraphProperty>> multiQueryResults = null;
     private QueryProfiler queryProfiler = QueryProfiler.NO_OP;
 
-    public JanusGraphPropertiesStep(final Traversal.Admin traversal, final PropertyType propertyType,
-                                    ArrayList<HasContainer> hasContainers, final String... propertyKeys) {
-        super(traversal, propertyType, propertyKeys);
-        this.hasContainers = hasContainers;
-    }
+    private boolean skipMultiQueryStrategyManagement;
 
     public JanusGraphPropertiesStep(PropertiesStep<E> originalStep) {
-        this(originalStep.getTraversal(),
-            originalStep.getReturnType(),
-            new ArrayList<>(),
-            originalStep.getPropertyKeys());
-
-        originalStep.getLabels().forEach(this::addLabel);
-
-        this.limit = Query.NO_LIMIT;
+        this(originalStep, false);
     }
 
-    public JanusGraphPropertiesStep(JanusGraphPropertiesStep<E> originalStep) {
-        this(originalStep.getTraversal(),
-            originalStep.getReturnType(),
-            originalStep.hasContainers,
-            originalStep.getPropertyKeys());
-
+    public JanusGraphPropertiesStep(PropertiesStep<E> originalStep, boolean skipMultiQueryStrategyManagement) {
+        super(originalStep.getTraversal(), originalStep.getReturnType(), originalStep.getPropertyKeys());
+        this.skipMultiQueryStrategyManagement = skipMultiQueryStrategyManagement;
         originalStep.getLabels().forEach(this::addLabel);
 
-        this.useMultiQuery = originalStep.useMultiQuery;
-        this.limit = originalStep.limit;
+        if (originalStep instanceof JanusGraphPropertiesStep) {
+            JanusGraphPropertiesStep originalJanusGraphPropertiesStep = (JanusGraphPropertiesStep) originalStep;
+            this.useMultiQuery = originalJanusGraphPropertiesStep.useMultiQuery;
+            this.hasContainers = originalJanusGraphPropertiesStep.hasContainers;
+            this.limit = originalJanusGraphPropertiesStep.limit;
+        } else {
+            this.hasContainers = new ArrayList<>();
+            this.limit = Query.NO_LIMIT;
+        }
+    }
+
+    @Override
+    public boolean skipMultiQueryStrategyManagement(){
+        return skipMultiQueryStrategyManagement;
     }
 
     @Override

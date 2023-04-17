@@ -2,6 +2,7 @@ package org.janusgraph.graphdb.tinkerpop.optimize.step;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
+import org.apache.tinkerpop.gremlin.process.traversal.Step;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.Traverser;
 import org.apache.tinkerpop.gremlin.process.traversal.step.Profiling;
@@ -9,6 +10,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.step.map.PropertiesStep;
 import org.apache.tinkerpop.gremlin.process.traversal.step.map.PropertyMapStep;
 import org.apache.tinkerpop.gremlin.process.traversal.step.util.HasContainer;
 import org.apache.tinkerpop.gremlin.process.traversal.step.util.WithOptions;
+import org.apache.tinkerpop.gremlin.process.traversal.util.DefaultTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.util.MutableMetrics;
 import org.apache.tinkerpop.gremlin.process.traversal.util.TraversalInterruptedException;
 import org.apache.tinkerpop.gremlin.process.traversal.util.TraversalProduct;
@@ -60,16 +62,37 @@ public class JanusGraphPropertyMapStep<K, E> extends PropertyMapStep<K, E> imple
     private Map<JanusGraphVertex, Map<K, E>> multiQueryResults = null;
     private QueryProfiler queryProfiler = QueryProfiler.NO_OP;
 
+    private JanusGraphPropertiesStep propertiesStep;
+
     public JanusGraphPropertyMapStep(PropertyMapStep<K, E> originalStep) {
         super(originalStep.getTraversal(), originalStep.getReturnType(), originalStep.getPropertyKeys());
         originalStep.getLabels().forEach(this::addLabel);
 
+        // TODO: copy originalStep.getIncludedTokens();
+        // TODO: copy originalStep.getParameters()
+
         if (originalStep instanceof JanusGraphPropertyMapStep) {
-            JanusGraphPropertyMapStep originalJanusGraphPropertiesStep = (JanusGraphPropertyMapStep) originalStep;
-            this.useMultiQuery = originalJanusGraphPropertiesStep.useMultiQuery;
+            JanusGraphPropertyMapStep originalJanusGraphPropertyMapStep = (JanusGraphPropertyMapStep) originalStep;
+            this.useMultiQuery = originalJanusGraphPropertyMapStep.useMultiQuery;
+            setPropertyTraversal(originalJanusGraphPropertyMapStep.propertyTraversal);
+        } else {
+            final Traversal.Admin<Element, ? extends Property> temp = new DefaultTraversal<>();
+            PropertiesStep propertiesStep = new PropertiesStep<>(temp, PropertyType.PROPERTY, originalStep.getPropertyKeys());
+            final JanusGraphPropertiesStep janusGraphPropertiesStep = new JanusGraphPropertiesStep(propertiesStep, true);
+            temp.addStep(janusGraphPropertiesStep);
+            this.propertiesStep = janusGraphPropertiesStep;
+            super.setPropertyTraversal(temp);
         }
     }
 
+    @Override
+    public void setPropertyTraversal(final Traversal.Admin<Element, ? extends Property> propertyTraversal) {
+        if(propertyTraversal == null){
+            return;
+        }
+        this.propertiesStep = getPropertiesStep(propertyTraversal);
+        super.setPropertyTraversal(propertyTraversal);
+    }
 
     @Override
     public void setMetrics(MutableMetrics metrics) {
@@ -79,11 +102,17 @@ public class JanusGraphPropertyMapStep<K, E> extends PropertyMapStep<K, E> imple
     @Override
     public void setUseMultiQuery(boolean useMultiQuery) {
         this.useMultiQuery = useMultiQuery;
+        if(propertiesStep != null){
+            propertiesStep.setUseMultiQuery(useMultiQuery);
+        }
     }
 
     @Override
     public void registerFutureVertexForPrefetching(Vertex futureVertex) {
         verticesToPrefetch.add(futureVertex);
+        if(propertiesStep != null){
+            propertiesStep.registerFutureVertexForPrefetching(futureVertex);
+        }
     }
 
 //    protected Traverser.Admin<Map<K, E>> processNextStart() {
@@ -91,27 +120,27 @@ public class JanusGraphPropertyMapStep<K, E> extends PropertyMapStep<K, E> imple
 //        return traverser.split(this.map(traverser), this);
 //    }
 
-    @Override
-    protected Map<K, E> map(final Traverser.Admin<Element> traverser) {
-
-        Element wrappedElement = traverser.get();
-
-        if (useMultiQuery && wrappedElement instanceof Vertex) {
-            if (multiQueryResults == null || !multiQueryResults.containsKey(wrappedElement)) {
-                prefetchNextBatch(traverser);
-            }
-            return multiQueryResults.get(wrappedElement);
-        } else if (wrappedElement instanceof JanusGraphVertex || wrappedElement instanceof WrappedVertex) {
-            final JanusGraphVertexQuery query = makeQuery((JanusGraphTraversalUtil.getJanusGraphVertex(traverser)).query());
-            return convertIterator(query.properties());
-        } else {
-            //It is some other element (edge or vertex property)
-
-            //this asks for properties
-            Iterator<? extends Property<?>> propertiesIt = traverser.get().properties(getPropertyKeys());
-            return propertiesIt;
-        }
-    }
+//    @Override
+//    protected Map<K, E> map(final Traverser.Admin<Element> traverser) {
+//
+//        Element wrappedElement = traverser.get();
+//
+//        if (useMultiQuery && wrappedElement instanceof Vertex) {
+//            if (multiQueryResults == null || !multiQueryResults.containsKey(wrappedElement)) {
+//                prefetchNextBatch(traverser);
+//            }
+//            return multiQueryResults.get(wrappedElement);
+//        } else if (wrappedElement instanceof JanusGraphVertex || wrappedElement instanceof WrappedVertex) {
+//            final JanusGraphVertexQuery query = makeQuery((JanusGraphTraversalUtil.getJanusGraphVertex(traverser)).query());
+//            return convertIterator(query.properties());
+//        } else {
+//            //It is some other element (edge or vertex property)
+//
+//            //this asks for properties
+//            Iterator<? extends Property<?>> propertiesIt = traverser.get().properties(getPropertyKeys());
+//            return propertiesIt;
+//        }
+//    }
 
 
 
@@ -365,4 +394,13 @@ public class JanusGraphPropertyMapStep<K, E> extends PropertyMapStep<K, E> imple
 //        clone.integrateChild(this.getTraversal().clone().asAdmin());
 //        return clone;
 //    }
+
+    private JanusGraphPropertiesStep getPropertiesStep(final Traversal.Admin<Element, ? extends Property> propertyTraversal){
+        for (Step step : propertyTraversal.getSteps()){
+            if(step instanceof JanusGraphPropertiesStep){
+                return (JanusGraphPropertiesStep) step;
+            }
+        }
+        return null;
+    }
 }

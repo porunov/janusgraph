@@ -77,6 +77,9 @@ public class JanusGraphMultiQueryStrategy extends AbstractTraversalStrategy<Trav
      */
     private void insertMultiQuerySteps(final Admin<?, ?> traversal, boolean limitBatchSize) {
         JanusGraphTraversalUtil.getSteps(JanusGraphTraversalUtil::isMultiQueryCompatibleStep, traversal).forEach(step -> {
+            if(step instanceof MultiQueriable && ((MultiQueriable) step).skipMultiQueryStrategyManagement()){
+                return;
+            }
             Optional<Step> multiQueryPosition = JanusGraphTraversalUtil.getLocalMultiQueryPositionForStep(step);
             if (multiQueryPosition.isPresent() && JanusGraphTraversalUtil.isLegalMultiQueryPosition(multiQueryPosition.get())) {
                 Step pos = multiQueryPosition.get();
@@ -99,6 +102,9 @@ public class JanusGraphMultiQueryStrategy extends AbstractTraversalStrategy<Trav
      */
     private void configureMultiQueriables(final Admin<?, ?> traversal) {
         TraversalHelper.getStepsOfAssignableClass(MultiQueriable.class, traversal).forEach(multiQueriable -> {
+            if(multiQueriable.skipMultiQueryStrategyManagement()){
+                return;
+            }
             final List<Step> mqPositions = JanusGraphTraversalUtil.getAllMultiQueryPositionsForMultiQueriable(multiQueriable);
 
             // If one position is not legal, this means that the entire step can not use the multiQuery feature.

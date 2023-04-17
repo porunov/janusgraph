@@ -33,4 +33,8 @@ public interface MultiQueriable<S,E> extends Step<S,E> {
      * @param futureVertex The vertex which will reach the step in the future.
      */
     void registerFutureVertexForPrefetching(Vertex futureVertex);
+
+    default boolean skipMultiQueryStrategyManagement(){
+        return false;
+    }
 }

@@ -22,9 +22,14 @@ import org.apache.tinkerpop.gremlin.process.traversal.step.branch.LocalStep;
 import org.apache.tinkerpop.gremlin.process.traversal.step.filter.RangeGlobalStep;
 import org.apache.tinkerpop.gremlin.process.traversal.step.map.EdgeVertexStep;
 import org.apache.tinkerpop.gremlin.process.traversal.step.map.PropertiesStep;
+import org.apache.tinkerpop.gremlin.process.traversal.step.map.PropertyMapStep;
 import org.apache.tinkerpop.gremlin.process.traversal.step.map.VertexStep;
 import org.apache.tinkerpop.gremlin.process.traversal.strategy.AbstractTraversalStrategy;
+import org.apache.tinkerpop.gremlin.process.traversal.util.DefaultTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.util.TraversalHelper;
+import org.apache.tinkerpop.gremlin.structure.Element;
+import org.apache.tinkerpop.gremlin.structure.Property;
+import org.apache.tinkerpop.gremlin.structure.PropertyType;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.janusgraph.graphdb.database.StandardJanusGraph;
 import org.janusgraph.graphdb.query.QueryUtil;
@@ -32,10 +37,13 @@ import org.janusgraph.graphdb.tinkerpop.optimize.JanusGraphTraversalUtil;
 import org.janusgraph.graphdb.tinkerpop.optimize.step.HasStepFolder;
 import org.janusgraph.graphdb.tinkerpop.optimize.step.JanusGraphEdgeVertexStep;
 import org.janusgraph.graphdb.tinkerpop.optimize.step.JanusGraphPropertiesStep;
+import org.janusgraph.graphdb.tinkerpop.optimize.step.JanusGraphPropertyMapStep;
 import org.janusgraph.graphdb.tinkerpop.optimize.step.JanusGraphVertexStep;
 import org.janusgraph.graphdb.tinkerpop.optimize.step.MultiQueriable;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -64,7 +72,7 @@ public class JanusGraphLocalQueryOptimizerStrategy extends AbstractTraversalStra
 
         applyJanusGraphVertexSteps(traversal, batchPropertyPrefetching, txVertexCacheSize);
         // new PropertiesStep<>(this.asAdmin(), PropertyType.VALUE, propertyKeys)
-        applyJanusGraphPropertiesSteps(traversal);
+        applyJanusGraphPropertySteps(traversal);
         inspectLocalTraversals(traversal);
     }
 
@@ -92,16 +100,94 @@ public class JanusGraphLocalQueryOptimizerStrategy extends AbstractTraversalStra
         });
     }
 
-    private void applyJanusGraphPropertiesSteps(Admin<?, ?> traversal) {
-        TraversalHelper.getStepsOfAssignableClass(PropertiesStep.class, traversal).forEach(originalStep -> {
-            final JanusGraphPropertiesStep propertiesStep = new JanusGraphPropertiesStep(originalStep);
-            TraversalHelper.replaceStep(originalStep, propertiesStep, originalStep.getTraversal());
+    private void applyJanusGraphPropertyMapSteps(Admin<?, ?> traversal) {
+        TraversalHelper.getStepsOfAssignableClass(PropertyMapStep.class, traversal).forEach(originalStep -> {
 
-            if (propertiesStep.getReturnType().forProperties()) {
-                HasStepFolder.foldInHasContainer(propertiesStep, originalStep.getTraversal(), originalStep.getTraversal());
-                //We cannot fold in orders or ranges since they are not local
-            }
+            final JanusGraphPropertyMapStep propertyMapStep = new JanusGraphPropertyMapStep(originalStep);
+            TraversalHelper.replaceStep(originalStep, propertyMapStep, originalStep.getTraversal());
+
+//            final Traversal.Admin<?, ?> temp = new DefaultTraversal<>();
+//            PropertiesStep propertiesStep = new PropertiesStep<>(temp, PropertyType.PROPERTY, originalStep.getPropertyKeys());
+//            final JanusGraphPropertiesStep janusGraphPropertiesStep = new JanusGraphPropertiesStep(propertiesStep);
+//            janusGraphPropertiesStep.setUseMultiQuery(true);
+//
+//            temp.addStep(janusGraphPropertiesStep);
+//
+//            originalStep.setPropertyTraversal(temp);
+
+
+//
+//
+//            Step previousStep = originalStep.getPreviousStep().getPreviousStep();
+//            final JanusGraphPropertiesStep propertiesStep = new JanusGraphPropertiesStep(
+//                traversal,
+//                originalStep.getReturnType(),
+//                new ArrayList<>(),
+//                originalStep.getPropertyKeys());
+//
+//            Traversal.Admin propertiesTraversal = new DefaultGraphTraversal<>(traversal.getGraph().get())
+//                .addStep(previousStep).addStep(propertiesStep);
+
+//            propertiesTraversal.addStep(originalStep);
+//            propertiesTraversal.addStep(new IdStep<>(propertiesTraversal));
+
+//            Traversal.Admin filterTraversal = new DefaultGraphTraversal<>(traversal.getGraph().get())
+//                .addStep(
+//                    new GraphStep<>(traversal, Vertex.class, true)
+//                );
+//
+//            filterTraversal.addStep(originalStep);
+//            filterTraversal.addStep(new IdStep<>(filterTraversal));
+
+
+            //JanusGraphTraversalUtil.getTx(traversal).traversal().V();
+            // new PropertiesStep<>(this.asAdmin(), PropertyType.VALUE, propertyKeys)
+
+            //DefaultTraversal defaultTraversal = new DefaultTraversal();
+//            defaultTraversal.addStarts(originalStep.getTraversal());
+//            defaultTraversal.setGraph((Graph) originalStep.getTraversal().getGraph().get());
+//            defaultTraversal.setParent(originalStep.getTraversal().getParent());
+
+            // TODO: check if multiQuery is actually enabled
+//            propertiesStep.setUseMultiQuery(true);
+//            originalStep.setPropertyTraversal(propertiesTraversal);
         });
+    }
+
+    private void applyJanusGraphPropertySteps(Admin<?, ?> traversal) {
+
+        final List<Step> steps = new ArrayList<>(traversal.getSteps());
+        for (final Step step : steps) {
+            Class stepClass = step.getClass();
+            if (!JanusGraphPropertiesStep.class.equals(stepClass) && PropertiesStep.class.isAssignableFrom(stepClass)){
+                applyPropertiesStepOptimization((PropertiesStep) step);
+            } else if(!JanusGraphPropertyMapStep.class.equals(stepClass) && PropertyMapStep.class.isAssignableFrom(stepClass)){
+                applyPropertyMapStepOptimization((PropertyMapStep) step);
+            }
+        }
+    }
+
+    private void applyPropertiesStepOptimization(PropertiesStep originalStep){
+        final JanusGraphPropertiesStep propertiesStep = new JanusGraphPropertiesStep(originalStep);
+        TraversalHelper.replaceStep(originalStep, propertiesStep, originalStep.getTraversal());
+
+        if (propertiesStep.getReturnType().forProperties()) {
+            HasStepFolder.foldInHasContainer(propertiesStep, originalStep.getTraversal(), originalStep.getTraversal());
+            //We cannot fold in orders or ranges since they are not local
+        }
+    }
+
+    private void applyPropertyMapStepOptimization(PropertyMapStep originalStep){
+
+//        final Traversal.Admin<Element, ? extends Property> temp = new DefaultTraversal<>();
+//        PropertiesStep propertiesStep = new PropertiesStep<>(temp, PropertyType.PROPERTY, originalStep.getPropertyKeys());
+//        final JanusGraphPropertiesStep janusGraphPropertiesStep = new JanusGraphPropertiesStep(propertiesStep, true);
+//        temp.addStep(janusGraphPropertiesStep);
+//        originalStep.setPropertyTraversal(temp);
+
+
+        final JanusGraphPropertyMapStep propertyMapStep = new JanusGraphPropertyMapStep(originalStep);
+        TraversalHelper.replaceStep(originalStep, propertyMapStep, originalStep.getTraversal());
     }
 
     private void inspectLocalTraversals(final Admin<?, ?> traversal) {
@@ -135,6 +221,18 @@ public class JanusGraphLocalQueryOptimizerStrategy extends AbstractTraversalStra
 
 
                 unfoldLocalTraversal(traversal, localStep, localTraversal, propertiesStep);
+            } else if (localStart instanceof PropertyMapStep) {
+                final JanusGraphPropertyMapStep propertyMapStep = new JanusGraphPropertyMapStep((PropertyMapStep) localStart);
+                TraversalHelper.replaceStep(localStart, propertyMapStep, localTraversal);
+
+//                if (propertiesStep.getReturnType().forProperties()) {
+//                    HasStepFolder.foldInHasContainer(propertyMapStep, localTraversal, traversal);
+//                    HasStepFolder.foldInOrder(propertyMapStep, propertiesStep.getNextStep(), localTraversal, traversal, false, null);
+//                }
+//                HasStepFolder.foldInRange(propertiesStep, JanusGraphTraversalUtil.getNextNonIdentityStep(propertiesStep), localTraversal, null);
+//
+//
+//                unfoldLocalTraversal(traversal, localStep, localTraversal, propertyMapStep);
             }
 
         });

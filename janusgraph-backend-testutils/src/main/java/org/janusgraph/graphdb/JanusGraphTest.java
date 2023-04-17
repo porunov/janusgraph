@@ -28,6 +28,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
+import org.apache.tinkerpop.gremlin.process.traversal.step.util.WithOptions;
 import org.apache.tinkerpop.gremlin.process.traversal.util.Metrics;
 import org.apache.tinkerpop.gremlin.process.traversal.util.TraversalMetrics;
 import org.apache.tinkerpop.gremlin.structure.Direction;
@@ -4768,7 +4769,17 @@ public abstract class JanusGraphTest extends JanusGraphBaseTest {
         assertEquals(3, countBackendQueriesOfSize(barrierSize, profile.getMetrics()));
         assertEquals(1, countBackendQueriesOfSize(numV - 3 * barrierSize, profile.getMetrics()));
 
+        // test batching for `valueMap()` with options
+        // graph.traversal().V().valueMap("foo").with(WithOptions.tokens, WithOptions.ids).toList()
+        traversal = () -> graph.traversal().V(cs).barrier(barrierSize).valueMap("foo").with(WithOptions.tokens, WithOptions.ids);
+        assertEqualResultWithAndWithoutLimitBatchSize(traversal);
+        clopen(option(USE_MULTIQUERY), true, option(LIMIT_BATCH_SIZE), true);
+        profile = traversal.get().profile().next();
+        //assertEquals(3, countBackendQueriesOfSize(barrierSize, profile.getMetrics()));
+        //assertEquals(1, countBackendQueriesOfSize(numV - 3 * barrierSize, profile.getMetrics()));
+
         // test batching for `valueMap()`
+        // graph.traversal().V().valueMap("foo").with(WithOptions.tokens, WithOptions.ids).toList()
         traversal = () -> graph.traversal().V(cs).barrier(barrierSize).valueMap("foo");
         assertEqualResultWithAndWithoutLimitBatchSize(traversal);
         clopen(option(USE_MULTIQUERY), true, option(LIMIT_BATCH_SIZE), true);
