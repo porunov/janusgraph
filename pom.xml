@@ -78,7 +78,7 @@
         <commons.beanutils.version>1.9.4</commons.beanutils.version>
         <commons.collections.version>3.2.2</commons.collections.version>
         <zookeeper.version>3.8.1</zookeeper.version>
-        <netty4.version>4.1.90.Final</netty4.version>
+        <netty4.version>4.1.89.Final</netty4.version>
         <jna.version>5.13.0</jna.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -107,17 +107,17 @@
         <scylladb.version>5.1.4</scylladb.version>
         <testcontainers.version>1.17.6</testcontainers.version>
         <easymock.version>5.1.0</easymock.version>
-        <protobuf.version>3.22.2</protobuf.version>
+        <protobuf.version>3.22.0</protobuf.version>
         <grpc.version>1.53.0</grpc.version>
         <protoc.version>3.15.3</protoc.version>
         <gson.version>2.10.1</gson.version>
         <jmh.version>1.33</jmh.version>
         <!-- align with org.apache.solr:solr-solrj -->
-        <jetty.version>9.4.51.v20230217</jetty.version>
+        <jetty.version>9.4.50.v20221201</jetty.version>
         <log4j2.version>2.20.0</log4j2.version>
         <graalvm-nativeimage.version>22.3.1</graalvm-nativeimage.version>
         <caffeine.version>2.9.3</caffeine.version>
-        <checker-qual.version>3.31.0</checker-qual.version>
+        <checker-qual.version>3.30.0</checker-qual.version>
     </properties>
     <modules>
         <module>janusgraph-grpc</module>
@@ -357,7 +357,7 @@
             <plugins>
                 <plugin>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.11.0</version>
+                    <version>3.10.1</version>
                     <configuration>
                         <source>${compiler.source}</source>
                         <target>${compiler.target}</target>
@@ -1418,7 +1418,7 @@
             <dependency>
                 <groupId>org.json</groupId>
                 <artifactId>json</artifactId>
-                <version>20230227</version>
+                <version>20220924</version>
             </dependency>
             <dependency>
                 <groupId>javax.enterprise</groupId>
@@ -1675,7 +1675,7 @@
                             <dependency>
                                 <groupId>org.jacoco</groupId>
                                 <artifactId>org.jacoco.ant</artifactId>
-                                <version>0.8.8</version>
+                                <version>0.8.9</version>
                             </dependency>
                         </dependencies>
                     </plugin>
