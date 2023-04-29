@@ -33,8 +33,6 @@ on:
     - '*.md'
     branches-ignore:
       - 'dependabot/**'
-  schedule:
-    - cron:  '0 0 * * 3'
 
 env:
   ES_JAVA_OPTS: "-Xms256m -Xmx512m"
