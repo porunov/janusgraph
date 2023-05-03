@@ -71,7 +71,7 @@ public class BackendOperation {
                 do {
                     if (ex instanceof BackendException) storeEx = (BackendException)ex;
                 } while ((ex=ex.getCause())!=null);
-                if (storeEx!=null && storeEx instanceof TemporaryBackendException) {
+                if (storeEx instanceof TemporaryBackendException) {
                     lastException = storeEx;
                 } else if (e instanceof BackendException) {
                     throw (BackendException)e;

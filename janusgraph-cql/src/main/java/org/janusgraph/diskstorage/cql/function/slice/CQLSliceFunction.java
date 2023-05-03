@@ -14,13 +14,14 @@
 
 package org.janusgraph.diskstorage.cql.function.slice;
 
-import org.janusgraph.diskstorage.BackendException;
 import org.janusgraph.diskstorage.EntryList;
 import org.janusgraph.diskstorage.keycolumnvalue.KeySliceQuery;
 import org.janusgraph.diskstorage.keycolumnvalue.StoreTransaction;
 
+import java.util.concurrent.CompletableFuture;
+
 public interface CQLSliceFunction {
 
-    EntryList getSlice(final KeySliceQuery query, final StoreTransaction txh) throws BackendException;
+    CompletableFuture<EntryList> getSlice(final KeySliceQuery query, final StoreTransaction txh);
 
 }

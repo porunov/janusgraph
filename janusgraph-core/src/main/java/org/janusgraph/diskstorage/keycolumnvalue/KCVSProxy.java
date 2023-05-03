@@ -22,6 +22,7 @@ import org.janusgraph.diskstorage.StaticBuffer;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Wraps a {@link org.janusgraph.diskstorage.keycolumnvalue.KeyColumnValueStore} as a proxy as a basis for
@@ -78,12 +79,12 @@ public class KCVSProxy implements KeyColumnValueStore {
     }
 
     @Override
-    public EntryList getSlice(KeySliceQuery query, StoreTransaction txh) throws BackendException {
+    public CompletableFuture<EntryList> getSlice(KeySliceQuery query, StoreTransaction txh) {
         return store.getSlice(query, unwrapTx(txh));
     }
 
     @Override
-    public Map<StaticBuffer,EntryList> getSlice(List<StaticBuffer> keys, SliceQuery query, StoreTransaction txh) throws BackendException {
+    public Map<StaticBuffer,CompletableFuture<EntryList>> getSlice(List<StaticBuffer> keys, SliceQuery query, StoreTransaction txh) {
         return store.getSlice(keys, query, unwrapTx(txh));
     }
 }

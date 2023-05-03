@@ -48,8 +48,7 @@ import org.janusgraph.diskstorage.PermanentBackendException;
 import org.janusgraph.diskstorage.StaticBuffer;
 import org.janusgraph.diskstorage.TemporaryBackendException;
 import org.janusgraph.diskstorage.configuration.Configuration;
-import org.janusgraph.diskstorage.cql.function.slice.CQLExecutorServiceSliceFunction;
-import org.janusgraph.diskstorage.cql.function.slice.CQLSimpleSliceFunction;
+import org.janusgraph.diskstorage.cql.function.slice.AsyncCQLSliceFunction;
 import org.janusgraph.diskstorage.cql.function.slice.CQLSliceFunction;
 import org.janusgraph.diskstorage.keycolumnvalue.KCVMutation;
 import org.janusgraph.diskstorage.keycolumnvalue.KeyColumnValueStore;
@@ -67,7 +66,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
@@ -136,6 +135,21 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore {
             Case($(CQLKeyColumnValueStore::isKeySizeTooLarge), PermanentBackendException::new),
             Case($(), TemporaryBackendException::new));
     };
+
+    // TODO: use some logic similar to this one to map exceptions correctly
+    public static <T> T interruptibleWait(final CompletableFuture<T> result) throws BackendException {
+        try {
+            return result.get();
+        } catch (InterruptedException e){
+            Thread.currentThread().interrupt();
+            throw new PermanentBackendException(e);
+        } catch (Exception e) {
+            if (e.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw CQLKeyColumnValueStore.EXCEPTION_MAPPER.apply(e);
+        }
+    }
 
     /**
      * CQL keys are limited to 64k, and a query that attempts to filter on such
@@ -247,13 +261,9 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore {
             this.insertColumnWithTTL = null;
         }
 
-        Optional<ExecutorService> executorService = this.storeManager.getExecutorService();
+        ExecutorService executorService = this.storeManager.getExecutorService();
 
-        if(executorService.isPresent()){
-            cqlSliceFunction = new CQLExecutorServiceSliceFunction(session, getSlice, getter, executorService.get());
-        } else {
-            cqlSliceFunction = new CQLSimpleSliceFunction(session, getSlice, getter);
-        }
+        cqlSliceFunction = new AsyncCQLSliceFunction(session, getSlice, getter, executorService);
 
         // @formatter:on
     }
@@ -387,12 +397,17 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore {
     }
 
     @Override
-    public EntryList getSlice(final KeySliceQuery query, final StoreTransaction txh) throws BackendException {
+    public Function<? super Throwable, BackendException> getExceptionMapper(){
+        return EXCEPTION_MAPPER;
+    };
+
+    @Override
+    public CompletableFuture<EntryList> getSlice(final KeySliceQuery query, final StoreTransaction txh) {
         return cqlSliceFunction.getSlice(query, txh);
     }
 
     @Override
-    public Map<StaticBuffer, EntryList> getSlice(final List<StaticBuffer> keys, final SliceQuery query, final StoreTransaction txh) throws BackendException {
+    public Map<StaticBuffer, CompletableFuture<EntryList>> getSlice(final List<StaticBuffer> keys, final SliceQuery query, final StoreTransaction txh) {
         throw new UnsupportedOperationException("The CQL backend does not support multi-key queries");
     }
 

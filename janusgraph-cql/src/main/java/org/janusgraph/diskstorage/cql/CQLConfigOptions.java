@@ -18,6 +18,7 @@ import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import org.janusgraph.diskstorage.configuration.ConfigElement;
 import org.janusgraph.diskstorage.configuration.ConfigNamespace;
 import org.janusgraph.diskstorage.configuration.ConfigOption;
+import org.janusgraph.diskstorage.configuration.ExecutorServiceBuilder;
 import org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration;
 import org.janusgraph.graphdb.configuration.PreInitializeConfigOptions;
 
@@ -603,25 +604,14 @@ public interface CQLConfigOptions {
         "executor-service",
         "Configuration options for CQL executor service which is used to process CQL queries.");
 
-    ConfigOption<Boolean> EXECUTOR_SERVICE_ENABLED = new ConfigOption<>(
-        EXECUTOR_SERVICE,
-        "enabled",
-        "Whether to use CQL executor service to process queries or not. If not used, the parallelism will be " +
-            "controlled internally by the CQL driver via `"+MAX_REQUESTS_PER_CONNECTION.toStringWithoutRoot()+"` parameter " +
-            "which may be preferable in production environments. " +
-            "Disabling executor service reduces overhead of thread pool but might be more difficult to tune.",
-        ConfigOption.Type.LOCAL,
-        Boolean.class,
-        false);
-
     ConfigOption<Integer> EXECUTOR_SERVICE_CORE_POOL_SIZE = new ConfigOption<>(
         EXECUTOR_SERVICE,
         GraphDatabaseConfiguration.PARALLEL_BACKEND_EXECUTOR_SERVICE_CORE_POOL_SIZE.getName(),
         "Core pool size for executor service. May be ignored if custom executor service is used " +
-            "(depending on the implementation of the executor service).",
+            "(depending on the implementation of the executor service). If no default value is specified then " +
+            "the pool size is defined as number of processors multiplied by 2.",
         ConfigOption.Type.LOCAL,
-        Integer.class,
-        10);
+        Integer.class);
 
     ConfigOption<Integer> EXECUTOR_SERVICE_MAX_POOL_SIZE = new ConfigOption<>(
         EXECUTOR_SERVICE,
@@ -645,7 +635,7 @@ public interface CQLConfigOptions {
         GraphDatabaseConfiguration.PARALLEL_BACKEND_EXECUTOR_SERVICE_CLASS.getDescription(),
         ConfigOption.Type.LOCAL,
         String.class,
-        "fixed");
+        ExecutorServiceBuilder.FIXED_THREAD_POOL_CLASS);
 
     ConfigOption<Long> EXECUTOR_SERVICE_MAX_SHUTDOWN_WAIT_TIME = new ConfigOption<>(
         EXECUTOR_SERVICE,

@@ -20,6 +20,8 @@ import org.janusgraph.diskstorage.EntryList;
 import org.janusgraph.diskstorage.EntryMetaData;
 import org.janusgraph.diskstorage.ReadBuffer;
 import org.janusgraph.diskstorage.StaticBuffer;
+import org.janusgraph.diskstorage.async.AsyncEntryListConvertContext;
+import org.janusgraph.diskstorage.async.DataChunks;
 import org.janusgraph.graphdb.relations.RelationCache;
 import org.janusgraph.util.encoding.StringEncoding;
 
@@ -29,6 +31,8 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 
 import static org.janusgraph.diskstorage.util.ArrayUtil.growSpace;
 
@@ -393,6 +397,105 @@ public class StaticArrayEntryList extends AbstractList<Entry> implements EntryLi
         assert offset==data.length;
         assert pos==limitAndValuePos.length;
         return new StaticArrayEntryList(data,limitAndValuePos,metadataSchema);
+    }
+
+    public static <E> void supplyEntryList(DataChunks<Iterator<E>, AsyncEntryListConvertContext> dataChunks, StaticArrayEntry.GetColVal<E,StaticBuffer> getter, ExecutorService executorService) {
+        supplyEntryList(dataChunks, getter, StaticArrayEntry.StaticBufferHandler.INSTANCE, executorService);
+    }
+
+    private static <E,D> void supplyEntryList(DataChunks<Iterator<E>, AsyncEntryListConvertContext> dataChunks, StaticArrayEntry.GetColVal<E,D> getter, StaticArrayEntry.DataHandler<D> dataHandler, ExecutorService executorService){
+        assert dataChunks!=null && getter!=null && dataHandler!=null;
+
+        if(dataChunks.getProcessedDataContext().getResult().isCompletedExceptionally()){
+            return;
+        }
+
+        executorService.execute(() -> {
+
+            if(!dataChunks.getProcessingLock().tryLock()){
+                return;
+            }
+
+            AsyncEntryListConvertContext context = dataChunks.getProcessedDataContext();
+
+            if(context.getResult().isDone()){
+                return;
+            }
+
+            Queue<Iterator<E>> chunksQueue = dataChunks.getDataChunks();
+            long[] limitAndValuePos = context.limitAndValuePos;
+            byte[] data = context.data;
+            EntryMetaData[] metadataSchema = context.metadataSchema;
+            int pos=context.pos;
+            int offset=context.offset;
+
+            try {
+                while (!chunksQueue.isEmpty()){
+                    Iterator<E> elements = chunksQueue.remove();
+                    while (elements.hasNext()) {
+                        E element = elements.next();
+                        if (element==null) throw new IllegalArgumentException("Unexpected null element in result set");
+                        if (metadataSchema==null) metadataSchema=getter.getMetaSchema(element);
+
+                        D col = getter.getColumn(element);
+                        D val = getter.getValue(element);
+                        int colSize = dataHandler.getSize(col);
+                        assert colSize>0;
+                        int valueSize = dataHandler.getSize(val);
+                        int metaDataSize = getMetaDataSize(metadataSchema,element,getter);
+
+                        data = ensureSpace(data,offset,colSize+valueSize+metaDataSize);
+                        offset=writeMetaData(data,offset,metadataSchema,element,getter);
+
+                        dataHandler.copy(col,data,offset);
+                        offset+=colSize;
+
+                        dataHandler.copy(val,data,offset);
+                        offset+=valueSize;
+
+                        limitAndValuePos = ensureSpace(limitAndValuePos,pos);
+                        limitAndValuePos[pos]= getOffsetAndValue(offset,colSize); //valuePosition = colSize
+                        pos++;
+                    }
+                }
+
+                if(dataChunks.isLastChunkRetrieved() && chunksQueue.isEmpty()){
+                    assert offset<=data.length;
+                    if (data.length > offset + (offset >> 1)) {
+                        //  Resize to preserve memory. This happens when either of the following conditions is true:
+                        //  1) current memory space is 1.5x more than minimum required space
+                        //  2) 1.5 x minimum required space will overflow, in which case the wasted memory space is likely still considerable
+                        byte[] newData = new byte[offset];
+                        System.arraycopy(data,0,newData,0,offset);
+                        data=newData;
+                    }
+                    if (pos<limitAndValuePos.length) {
+                        //Resize so that the the array fits exactly
+                        long[] newPos = new long[pos];
+                        System.arraycopy(limitAndValuePos,0,newPos,0,pos);
+                        limitAndValuePos=newPos;
+                    }
+                    assert offset<=data.length;
+                    assert pos==limitAndValuePos.length;
+                    context.complete(new StaticArrayEntryList(data,limitAndValuePos,metadataSchema));
+                }
+
+            } catch (Throwable throwable){
+                context.getResult().completeExceptionally(throwable);
+                return;
+            } finally {
+                context.data = data;
+                context.metadataSchema = metadataSchema;
+                context.pos = pos;
+                context.offset = offset;
+                context.limitAndValuePos = limitAndValuePos;
+                dataChunks.getProcessingLock().unlock();
+            }
+
+            if(!chunksQueue.isEmpty() || dataChunks.isLastChunkRetrieved() && !context.getResult().isDone()){
+                supplyEntryList(dataChunks, getter, dataHandler, executorService);
+            }
+        });
     }
 
     private static <E,D> EntryList of(Iterator<E> elements, StaticArrayEntry.GetColVal<E,D> getter, StaticArrayEntry.DataHandler<D> dataHandler) {

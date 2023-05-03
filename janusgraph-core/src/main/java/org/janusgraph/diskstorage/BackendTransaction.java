@@ -21,6 +21,7 @@ import org.janusgraph.core.JanusGraphException;
 import org.janusgraph.diskstorage.indexing.IndexQuery;
 import org.janusgraph.diskstorage.indexing.IndexTransaction;
 import org.janusgraph.diskstorage.indexing.RawQuery;
+import org.janusgraph.diskstorage.keycolumnvalue.KCVSUtil;
 import org.janusgraph.diskstorage.keycolumnvalue.KeyIterator;
 import org.janusgraph.diskstorage.keycolumnvalue.KeyRangeQuery;
 import org.janusgraph.diskstorage.keycolumnvalue.KeySliceQuery;
@@ -42,7 +43,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -78,8 +81,6 @@ public class BackendTransaction implements LoggableTransaction {
 
     private final Duration maxReadTime;
 
-    private final Executor threadPool;
-
     private final Map<String, IndexTransaction> indexTx;
 
     private boolean acquiredLock = false;
@@ -89,7 +90,7 @@ public class BackendTransaction implements LoggableTransaction {
     public BackendTransaction(CacheTransaction storeTx, BaseTransactionConfig txConfig,
                               StoreFeatures features, KCVSCache edgeStore, KCVSCache indexStore,
                               KCVSCache txLogStore, Duration maxReadTime,
-                              Map<String, IndexTransaction> indexTx, Executor threadPool,
+                              Map<String, IndexTransaction> indexTx,
                               boolean cacheEnabled, boolean allowCustomVertexIdType) {
         this.storeTx = storeTx;
         this.txConfig = txConfig;
@@ -99,7 +100,6 @@ public class BackendTransaction implements LoggableTransaction {
         this.txLogStore = txLogStore;
         this.maxReadTime = maxReadTime;
         this.indexTx = indexTx;
-        this.threadPool = threadPool;
         this.cacheEnabled = cacheEnabled;
         this.allowCustomVertexIdType = allowCustomVertexIdType;
     }
@@ -282,8 +282,12 @@ public class BackendTransaction implements LoggableTransaction {
         return executeRead(new Callable<EntryList>() {
             @Override
             public EntryList call() throws Exception {
+
+                CompletableFuture<EntryList>
+                KCVSUtil.getCompleted()
+
                 return cacheEnabled?edgeStore.getSlice(query, storeTx):
-                                    edgeStore.getSliceNoCache(query,storeTx);
+                    edgeStore.getSliceNoCache(query,storeTx);
             }
 
             @Override
@@ -291,6 +295,20 @@ public class BackendTransaction implements LoggableTransaction {
                 return "EdgeStoreQuery";
             }
         });
+
+        try {
+            return edgeStoreFutureQuery(query).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw edgeStore.getExceptionMapper().apply(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public CompletableFuture<EntryList> edgeStoreFutureQuery(final KeySliceQuery query) {
+        return cacheEnabled?edgeStore.getSlice(query, storeTx):
+            edgeStore.getSliceNoCache(query,storeTx);
     }
 
     public Map<StaticBuffer,EntryList> edgeStoreMultiQuery(final List<StaticBuffer> keys, final SliceQuery query) {
@@ -298,6 +316,10 @@ public class BackendTransaction implements LoggableTransaction {
             return executeRead(new Callable<Map<StaticBuffer,EntryList>>() {
                 @Override
                 public Map<StaticBuffer,EntryList> call() throws Exception {
+                    Map<StaticBuffer,CompletableFuture<EntryList>> futureMap = cacheEnabled?
+                        edgeStore.getSlice(keys, query, storeTx):
+                        edgeStore.getSliceNoCache(keys, query, storeTx);
+
                     return cacheEnabled?edgeStore.getSlice(keys, query, storeTx):
                                         edgeStore.getSliceNoCache(keys, query, storeTx);
                 }
@@ -318,8 +340,19 @@ public class BackendTransaction implements LoggableTransaction {
                 final AtomicInteger failureCount = new AtomicInteger(0);
                 EntryList[] resultArray = new EntryList[keys.size()];
                 for (int i = 0; i < keys.size(); i++) {
-                    threadPool.execute(new SliceQueryRunner(new KeySliceQuery(keys.get(i), query),
-                            doneSignal, failureCount, resultArray, i));
+                    final int arrayPosition = i;
+                    threadPool.execute(() -> {
+                        try {
+                            EntryList result;
+                            result = edgeStoreQuery(new KeySliceQuery(keys.get(arrayPosition), query));
+                            resultArray[arrayPosition] = result;
+                        } catch (Exception e) {
+                            failureCount.incrementAndGet();
+                            log.warn("Individual query in multi-transaction failed: ", e);
+                        } finally {
+                            doneSignal.countDown();
+                        }
+                    });
                 }
                 try {
                     doneSignal.await();
@@ -335,38 +368,6 @@ public class BackendTransaction implements LoggableTransaction {
                 }
             }
             return results;
-        }
-    }
-
-    private class SliceQueryRunner implements Runnable {
-
-        final KeySliceQuery kq;
-        final CountDownLatch doneSignal;
-        final AtomicInteger failureCount;
-        final Object[] resultArray;
-        final int resultPosition;
-
-        private SliceQueryRunner(KeySliceQuery kq, CountDownLatch doneSignal, AtomicInteger failureCount,
-                                 Object[] resultArray, int resultPosition) {
-            this.kq = kq;
-            this.doneSignal = doneSignal;
-            this.failureCount = failureCount;
-            this.resultArray = resultArray;
-            this.resultPosition = resultPosition;
-        }
-
-        @Override
-        public void run() {
-            try {
-                List<Entry> result;
-                result = edgeStoreQuery(kq);
-                resultArray[resultPosition] = result;
-            } catch (Exception e) {
-                failureCount.incrementAndGet();
-                log.warn("Individual query in multi-transaction failed: ", e);
-            } finally {
-                doneSignal.countDown();
-            }
         }
     }
 
@@ -505,7 +506,11 @@ public class BackendTransaction implements LoggableTransaction {
         } catch (JanusGraphException e) {
             // support traversal interruption
             // TODO: Refactor to allow direct propagation of underlying interrupt exception
-            if (Thread.interrupted()) throw new TraversalInterruptedException();
+            if (Thread.interrupted()){
+                TraversalInterruptedException interruptedException = new TraversalInterruptedException();
+                interruptedException.initCause(e);
+                throw interruptedException;
+            }
             throw e;
         }
     }

@@ -196,8 +196,8 @@ public class CQLStoreManager extends DistributedStoreManager implements KeyColum
             .build());
     }
 
-    Optional<ExecutorService> getExecutorService() {
-        return Optional.ofNullable(executorService);
+    ExecutorService getExecutorService() {
+        return executorService;
     }
 
     CqlSession getSession() {

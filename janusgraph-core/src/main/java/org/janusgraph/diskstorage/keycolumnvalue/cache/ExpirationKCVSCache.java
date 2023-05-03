@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -85,13 +86,29 @@ public class ExpirationKCVSCache extends KCVSCache {
     }
 
     @Override
-    public EntryList getSlice(final KeySliceQuery query, final StoreTransaction txh) throws BackendException {
+    public CompletableFuture<EntryList> getSlice(final KeySliceQuery query, final StoreTransaction txh) throws BackendException {
         incActionBy(1, CacheMetricsAction.RETRIEVAL,txh);
         if (isExpired(query)) {
             incActionBy(1, CacheMetricsAction.MISS,txh);
             return store.getSlice(query, unwrapTx(txh));
         }
+        EntryList cachedValue = cache.getIfPresent(query);
+        if(cachedValue != null){
+            CompletableFuture<EntryList> result = new CompletableFuture<>();
+            result.complete(cachedValue);
+            return result;
+        }
+        incActionBy(1, CacheMetricsAction.MISS,txh);
+        CompletableFuture<EntryList> result = store.getSlice(query, unwrapTx(txh));
+        result.thenAccept(entries -> cache.put(query, entries));
+        return result;
 
+        try {
+
+        } catch (BackendException e) {
+            if (e.getCause() instanceof JanusGraphException) throw (JanusGraphException)e.getCause();
+            else throw new JanusGraphException(e);
+        }
         return cache.get(query, key -> {
             incActionBy(1, CacheMetricsAction.MISS,txh);
             try {
@@ -104,7 +121,7 @@ public class ExpirationKCVSCache extends KCVSCache {
     }
 
     @Override
-    public Map<StaticBuffer,EntryList> getSlice(final List<StaticBuffer> keys, final SliceQuery query, final StoreTransaction txh) throws BackendException {
+    public Map<StaticBuffer,CompletableFuture<EntryList>> getSlice(final List<StaticBuffer> keys, final SliceQuery query, final StoreTransaction txh) throws BackendException {
         final Map<StaticBuffer,EntryList> results = new HashMap<>(keys.size());
         final List<StaticBuffer> remainingKeys = new ArrayList<>(keys.size());
         KeySliceQuery[] ksqs = new KeySliceQuery[keys.size()];

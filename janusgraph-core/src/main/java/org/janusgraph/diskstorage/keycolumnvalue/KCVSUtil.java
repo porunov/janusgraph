@@ -17,6 +17,7 @@ package org.janusgraph.diskstorage.keycolumnvalue;
 import org.janusgraph.diskstorage.BackendException;
 import org.janusgraph.diskstorage.Entry;
 import org.janusgraph.diskstorage.EntryList;
+import org.janusgraph.diskstorage.PermanentBackendException;
 import org.janusgraph.diskstorage.StaticBuffer;
 import org.janusgraph.diskstorage.util.BufferUtil;
 import org.slf4j.Logger;
@@ -25,6 +26,9 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 
 /**
  * Contains static utility methods for operating on {@link KeyColumnValueStore}.
@@ -112,5 +116,28 @@ public class KCVSUtil {
             result.put(key,EntryList.EMPTY_LIST);
         }
         return result;
+    }
+
+    public static EntryList getCompleted(CompletableFuture<EntryList> futureEntry,
+                                         Function<? super Throwable, BackendException> exceptionMapper) throws BackendException{
+        try {
+            return futureEntry.get();
+        } catch (InterruptedException e) {
+            // needed to support traversal interruption
+            Thread.currentThread().interrupt();
+            throw new PermanentBackendException(e);
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof InterruptedException) {
+                // needed to support traversal interruption
+                Thread.currentThread().interrupt();
+                throw new PermanentBackendException(e);
+            }
+            if(e.getCause() != null){
+                throw exceptionMapper.apply(e.getCause());
+            }
+            throw exceptionMapper.apply(e);
+        } catch (Throwable throwable){
+            throw exceptionMapper.apply(throwable);
+        }
     }
 }

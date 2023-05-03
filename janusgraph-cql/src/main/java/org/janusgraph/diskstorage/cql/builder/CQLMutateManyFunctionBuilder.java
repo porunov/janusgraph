@@ -26,8 +26,6 @@ import org.janusgraph.diskstorage.cql.function.ConsumerWithBackendException;
 import org.janusgraph.diskstorage.cql.function.mutate.CQLExecutorServiceMutateManyLoggedFunction;
 import org.janusgraph.diskstorage.cql.function.mutate.CQLExecutorServiceMutateManyUnloggedFunction;
 import org.janusgraph.diskstorage.cql.function.mutate.CQLMutateManyFunction;
-import org.janusgraph.diskstorage.cql.function.mutate.CQLSimpleMutateManyLoggedFunction;
-import org.janusgraph.diskstorage.cql.function.mutate.CQLSimpleMutateManyUnloggedFunction;
 import org.janusgraph.diskstorage.util.time.TimestampProvider;
 
 import java.util.Map;
@@ -39,7 +37,6 @@ import static org.janusgraph.diskstorage.cql.CQLConfigOptions.ATOMIC_BATCH_MUTAT
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.BATCH_STATEMENT_SIZE;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.EXECUTOR_SERVICE_CLASS;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.EXECUTOR_SERVICE_CORE_POOL_SIZE;
-import static org.janusgraph.diskstorage.cql.CQLConfigOptions.EXECUTOR_SERVICE_ENABLED;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.EXECUTOR_SERVICE_KEEP_ALIVE_TIME;
 import static org.janusgraph.diskstorage.cql.CQLConfigOptions.EXECUTOR_SERVICE_MAX_POOL_SIZE;
 import static org.janusgraph.graphdb.configuration.GraphDatabaseConfiguration.BASIC_METRICS;
@@ -54,36 +51,37 @@ public class CQLMutateManyFunctionBuilder {
                                               final Map<String, CQLKeyColumnValueStore> openStores,
                                               ConsumerWithBackendException<DistributedStoreManager.MaskedTimestamp> sleepAfterWriteFunction) {
 
-        ExecutorService executorService;
+        ExecutorService executorService = buildExecutorService(configuration);
         CQLMutateManyFunction mutateManyFunction;
 
         int batchSize = configuration.get(BATCH_STATEMENT_SIZE);
         boolean atomicBatch = configuration.get(ATOMIC_BATCH_MUTATE);
 
-        if (configuration.get(EXECUTOR_SERVICE_ENABLED)) {
-            executorService = buildExecutorService(configuration);
-            try {
-                if (atomicBatch) {
-                    mutateManyFunction = new CQLExecutorServiceMutateManyLoggedFunction(times,
-                        assignTimestamp, openStores, session, executorService, sleepAfterWriteFunction);
-                } else {
-                    mutateManyFunction = new CQLExecutorServiceMutateManyUnloggedFunction(batchSize,
-                        session, openStores, times, executorService, assignTimestamp, sleepAfterWriteFunction);
-                }
-            } catch (RuntimeException e) {
-                executorService.shutdown();
-                throw e;
-            }
-        } else {
-            executorService = null;
+        try {
             if (atomicBatch) {
-                mutateManyFunction = new CQLSimpleMutateManyLoggedFunction(times,
-                    assignTimestamp, openStores, session, sleepAfterWriteFunction);
+                mutateManyFunction = new CQLExecutorServiceMutateManyLoggedFunction(times,
+                    assignTimestamp, openStores, session, executorService, sleepAfterWriteFunction);
             } else {
-                mutateManyFunction = new CQLSimpleMutateManyUnloggedFunction(batchSize,
-                    session, openStores, times, assignTimestamp, sleepAfterWriteFunction);
+                mutateManyFunction = new CQLExecutorServiceMutateManyUnloggedFunction(batchSize,
+                    session, openStores, times, executorService, assignTimestamp, sleepAfterWriteFunction);
             }
+        } catch (RuntimeException e) {
+            executorService.shutdown();
+            throw e;
         }
+
+//        if (configuration.get(EXECUTOR_SERVICE_ENABLED)) {
+//
+//        } else {
+//            executorService = null;
+//            if (atomicBatch) {
+//                mutateManyFunction = new CQLSimpleMutateManyLoggedFunction(times,
+//                    assignTimestamp, openStores, session, sleepAfterWriteFunction);
+//            } else {
+//                mutateManyFunction = new CQLSimpleMutateManyUnloggedFunction(batchSize,
+//                    session, openStores, times, assignTimestamp, sleepAfterWriteFunction);
+//            }
+//        }
 
         return new CQLMutateManyFunctionWrapper(executorService, mutateManyFunction);
     }

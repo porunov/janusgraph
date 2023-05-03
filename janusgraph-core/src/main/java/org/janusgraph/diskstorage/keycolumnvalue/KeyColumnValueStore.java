@@ -18,10 +18,13 @@ import org.janusgraph.diskstorage.BackendException;
 import org.janusgraph.diskstorage.Entry;
 import org.janusgraph.diskstorage.EntryList;
 import org.janusgraph.diskstorage.StaticBuffer;
+import org.janusgraph.diskstorage.TemporaryBackendException;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 /**
  * Interface to a data store that has a BigTable like representation of its data. In other words, the data store is comprised of a set of rows
@@ -50,7 +53,7 @@ public interface KeyColumnValueStore {
      * @throws org.janusgraph.diskstorage.BackendException when columnEnd &lt; columnStart
      * @see KeySliceQuery
      */
-    EntryList getSlice(KeySliceQuery query, StoreTransaction txh) throws BackendException;
+    CompletableFuture<EntryList> getSlice(KeySliceQuery query, StoreTransaction txh);
 
     /**
      * Retrieves the list of entries (i.e. column-value pairs) as specified by the given {@link SliceQuery} for all
@@ -62,7 +65,7 @@ public interface KeyColumnValueStore {
      * @return The result of the query for each of the given keys as a map from the key to the list of result entries.
      * @throws org.janusgraph.diskstorage.BackendException
      */
-    Map<StaticBuffer,EntryList> getSlice(List<StaticBuffer> keys, SliceQuery query, StoreTransaction txh) throws BackendException;
+    Map<StaticBuffer,CompletableFuture<EntryList>> getSlice(List<StaticBuffer> keys, SliceQuery query, StoreTransaction txh);
 
     /**
      * Verifies acquisition of locks {@code txh} from previous calls to
@@ -193,6 +196,14 @@ public interface KeyColumnValueStore {
      * @see KeyColumnValueStoreManager#openDatabase(String)
      */
     String getName();
+
+    /**
+     * @return store exception mapper which can map custom store throwable to {@link org.janusgraph.diskstorage.TemporaryBackendException} or
+     * {@link org.janusgraph.diskstorage.PermanentBackendException}, so that JanusGraph knows if retry for the query is needed or not.
+     */
+    default Function<? super Throwable, BackendException> getExceptionMapper(){
+        return TemporaryBackendException::new;
+    };
 
     /**
      * Closes this store
