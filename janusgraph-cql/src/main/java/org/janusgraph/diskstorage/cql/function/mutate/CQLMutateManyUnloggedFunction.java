@@ -22,6 +22,7 @@ import com.datastax.oss.driver.api.core.cql.BoundStatement;
 import com.datastax.oss.driver.api.core.cql.DefaultBatchType;
 import io.vavr.collection.Iterator;
 import io.vavr.collection.Seq;
+import io.vavr.concurrent.Future;
 import org.janusgraph.diskstorage.BackendException;
 import org.janusgraph.diskstorage.StaticBuffer;
 import org.janusgraph.diskstorage.common.DistributedStoreManager;
@@ -29,27 +30,33 @@ import org.janusgraph.diskstorage.cql.CQLKeyColumnValueStore;
 import org.janusgraph.diskstorage.cql.function.ConsumerWithBackendException;
 import org.janusgraph.diskstorage.keycolumnvalue.KCVMutation;
 import org.janusgraph.diskstorage.keycolumnvalue.StoreTransaction;
+import org.janusgraph.diskstorage.util.backpressure.QueryBackPressure;
 import org.janusgraph.diskstorage.util.time.TimestampProvider;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 import static org.janusgraph.diskstorage.cql.CQLKeyColumnValueStore.EXCEPTION_MAPPER;
 import static org.janusgraph.diskstorage.cql.CQLTransaction.getTransaction;
 
-public abstract class AbstractCQLMutateManyUnloggedFunction extends AbstractCQLMutateManyFunction implements CQLMutateManyFunction {
+public class CQLMutateManyUnloggedFunction extends AbstractCQLMutateManyFunction implements CQLMutateManyFunction {
 
     private final CqlSession session;
     private final int batchSize;
+    private final QueryBackPressure queryBackPressure;
+    private final ExecutorService executorService;
 
-    protected AbstractCQLMutateManyUnloggedFunction(TimestampProvider times, boolean assignTimestamp,
-                                                    CqlSession session, Map<String, CQLKeyColumnValueStore> openStores,
-                                                    int batchSize,
-                                                    ConsumerWithBackendException<DistributedStoreManager.MaskedTimestamp> sleepAfterWriteFunction) {
+    public CQLMutateManyUnloggedFunction(int batchSize, CqlSession session, Map<String, CQLKeyColumnValueStore> openStores,
+                                         TimestampProvider times, boolean assignTimestamp,
+                                         ConsumerWithBackendException<DistributedStoreManager.MaskedTimestamp> sleepAfterWriteFunction,
+                                         QueryBackPressure queryBackPressure,
+                                         ExecutorService executorService) {
         super(sleepAfterWriteFunction, assignTimestamp, times, openStores);
         this.session = session;
         this.batchSize = batchSize;
+        this.queryBackPressure = queryBackPressure;
+        this.executorService = executorService;
     }
 
     // Create an async un-logged batch per partition key
@@ -58,21 +65,38 @@ public abstract class AbstractCQLMutateManyUnloggedFunction extends AbstractCQLM
 
         final DistributedStoreManager.MaskedTimestamp commitTime = createMaskedTimestampFunction.apply(txh);
 
-        Optional<Throwable> errorAfterExecution = mutate(commitTime, mutations, txh);
+        final Future<Seq<AsyncResultSet>> result = Future.sequence(this.executorService, Iterator.ofAll(mutations.entrySet()).flatMap(tableNameAndMutations -> {
+            final String tableName = tableNameAndMutations.getKey();
+            final Map<StaticBuffer, KCVMutation> tableMutations = tableNameAndMutations.getValue();
+            final CQLKeyColumnValueStore columnValueStore = getColumnValueStore(tableName);
+            return Iterator.ofAll(tableMutations.entrySet()).flatMap(keyAndMutations -> {
+                final StaticBuffer key = keyAndMutations.getKey();
+                final KCVMutation keyMutations = keyAndMutations.getValue();
+                return toGroupedBatchableStatementsSequenceIterator(commitTime, keyMutations, columnValueStore, key)
+                    .map(group -> Future.fromJavaFuture(this.executorService, execAsyncUnlogged(group, txh)));
+            });
+        }));
 
-        if (errorAfterExecution.isPresent()) {
-            throw EXCEPTION_MAPPER.apply(errorAfterExecution.get());
+        result.await();
+        if (result.isFailure()) {
+            throw EXCEPTION_MAPPER.apply(result.getCause().get());
         }
 
         sleepAfterWriteFunction.accept(commitTime);
     }
 
     protected CompletableFuture<AsyncResultSet> execAsyncUnlogged(Seq<BatchableStatement<BoundStatement>> group, StoreTransaction txh){
-        return this.session.executeAsync(
-            BatchStatement.newInstance(DefaultBatchType.UNLOGGED)
-                .addAll(group)
-                .setConsistencyLevel(getTransaction(txh).getWriteConsistencyLevel())
-        ).toCompletableFuture();
+        queryBackPressure.acquireBeforeQuery();
+        try{
+            return this.session.executeAsync(
+                BatchStatement.newInstance(DefaultBatchType.UNLOGGED)
+                    .addAll(group)
+                    .setConsistencyLevel(getTransaction(txh).getWriteConsistencyLevel())
+            ).whenComplete((asyncResultSet, throwable) -> queryBackPressure.releaseAfterQuery()).toCompletableFuture();
+        } catch (RuntimeException e){
+            queryBackPressure.releaseAfterQuery();
+            throw e;
+        }
     }
 
     protected Iterator<Seq<BatchableStatement<BoundStatement>>> toGroupedBatchableStatementsSequenceIterator(
@@ -89,9 +113,4 @@ public abstract class AbstractCQLMutateManyUnloggedFunction extends AbstractCQLM
         return Iterator.concat(deletions, additions)
             .grouped(this.batchSize);
     }
-
-    protected abstract Optional<Throwable> mutate(final DistributedStoreManager.MaskedTimestamp commitTime,
-                               final Map<String, Map<StaticBuffer, KCVMutation>> mutations,
-                               final StoreTransaction txh);
-
 }
