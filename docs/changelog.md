@@ -328,6 +328,28 @@ and optimize this method execution to execute all the slice queries for all the 
 (for example, by using asynchronous programming, slice queries grouping, multi-threaded execution, or any other technique which 
 is efficient for the respective storage adapter).  
 
+##### Added possibility to group multiple slice queries together via CQL storage backend
+
+Starting from JanusGraph 1.0.0 CQL storage implementation now groups queries which fetch properties with `Cardinality.SINGLE` together
+into the same CQL query. The behaviour can be changed by setting configuration `storage.cql.grouping.slice-allowed = false`. 
+
+CQL storage implementation has also ability to group queries to different partition keys together if they belong to the same 
+token range. This behaviour is disabled by default, but can be enabled via `storage.cql.grouping.keys-allowed = true`.
+Notice, that by enabling keys grouping feature it increases the return size of such queries because each CQL query which groups 
+multiple keys together needs to return those keys per each row. Moreover, it could potentially lead to less balanced load 
+on the storage cluster. However, it reduces the amount of CQL queries sent which may positively influence throughput in some cases 
+as well as pricing point of some Serverless deployments. We recommend to benchmark each use-case before enabling keys grouping (`storage.cql.grouping.keys-allowed`).
+
+Notice, ScyllaDB storage backend has a limit on distinct clustering key restrictions per query which is set to `20` by default.
+It is required to ensure that `storage.cql.grouping.keys-limit` or `storage.cql.grouping.slice-limit` is less or equal to the 
+amount of distinct clustering key restrictions is allowed on the storage backend. On ScyllaDB it's possible
+to configure this restriction using [max-partition-key-restrictions-per-query](https://enterprise.docs.scylladb.com/branch-2022.2/faq.html#how-can-i-change-the-maximum-number-of-in-restrictions) 
+configuration option (default to `100`).
+On AstraDB side it is needed to be asked on AstraDB side to be changed via `partition_keys_in_select_failure_threshold` and `in_select_cartesian_product_failure_threshold` threshold 
+configurations (https://docs.datastax.com/en/astra-serverless/docs/plan/planning.html#_cassandra_yaml).
+
+See additional properties to control grouping configurations under the namespace `storage.cql.grouping`.
+
 ##### Removal of deprecated classes/methods/functionalities
 
 ###### Methods
