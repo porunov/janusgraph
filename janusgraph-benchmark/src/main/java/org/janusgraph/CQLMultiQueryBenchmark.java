@@ -38,6 +38,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -55,13 +56,26 @@ public class CQLMultiQueryBenchmark {
     public WriteConfiguration getConfiguration() {
         ModifiableConfiguration config = GraphDatabaseConfiguration.buildGraphConfiguration();
         config.set(GraphDatabaseConfiguration.STORAGE_BACKEND,"cql");
-        config.set(CQLConfigOptions.LOCAL_DATACENTER, "dc1");
+        config.set(CQLConfigOptions.LOCAL_DATACENTER, "datacenter1");
+        config.set(GraphDatabaseConfiguration.STORAGE_HOSTS, new String[]{"192.168.68.100", "192.168.68.65", "192.168.68.54"});
+        config.set(GraphDatabaseConfiguration.STORAGE_PORT, 9042);
         config.set(GraphDatabaseConfiguration.USE_MULTIQUERY, true);
+        config.set(CQLConfigOptions.REQUEST_TIMEOUT, 60000L);
+        config.set(GraphDatabaseConfiguration.STORAGE_READ_WAITTIME, Duration.ofSeconds(120L));
+        config.set(GraphDatabaseConfiguration.STORAGE_WRITE_WAITTIME, Duration.ofSeconds(120L));
+        config.set(CQLConfigOptions.STRING_CONFIGURATION, "datastax-java-driver { advanced.metadata.schema.debouncer.window = 5 seconds \n advanced.metadata.schema.debouncer.max-events = 1 }");
+        config.set(CQLConfigOptions.SLICE_GROUPING_ALLOWED, true);
+        config.set(CQLConfigOptions.KEYS_GROUPING_ALLOWED, true);
+        config.set(CQLConfigOptions.KEYS_GROUPING_MIN, 700);
+        config.set(CQLConfigOptions.SLICE_GROUPING_LIMIT, 100);
+        config.set(CQLConfigOptions.KEYS_GROUPING_LIMIT, 100);
         return config.getConfiguration();
     }
 
     @Setup
     public void setUp() throws Exception {
+        JanusGraphFactory.drop(JanusGraphFactory.open(getConfiguration()));
+
         graph = JanusGraphFactory.open(getConfiguration());
 
         JanusGraphManagement mgmt = graph.openManagement();

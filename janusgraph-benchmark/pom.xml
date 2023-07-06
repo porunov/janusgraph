@@ -24,7 +24,11 @@
             <artifactId>janusgraph-cql</artifactId>
             <version>${project.version}</version>
         </dependency>
-
+        <dependency>
+            <groupId>org.janusgraph</groupId>
+            <artifactId>janusgraph-es</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Logging backends. -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
