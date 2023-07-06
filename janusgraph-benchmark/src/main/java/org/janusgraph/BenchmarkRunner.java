@@ -93,27 +93,13 @@ public class BenchmarkRunner {
     }
 
     public static void main(String[] args) throws RunnerException, IOException, InterruptedException {
-        final boolean runSpecifiedTests = args.length > 0;
         final List<Map<String, Object>> outputs = new ArrayList<>();
 
         final ChainedOptionsBuilder builder = getJmhBuilder();
-        if (runSpecifiedTests) {
-            for (String arg : args) {
-                builder.include(arg);
-            }
-        } else {
-            builder.include(".*Benchmark");
-            builder.exclude(StaticArrayEntryListBenchmark.class.getSimpleName());
-            builder.exclude(BackPressureBenchmark.class.getSimpleName());
-            builder.exclude("CQL.*Benchmark");
-        }
+        builder.include(".*Benchmark");
+
         Collection<RunResult> results = new Runner(builder.build()).run();
         transformResults(results, outputs);
-
-        // run benchmarks using Cassandra (if ccm is available)
-        if (!runSpecifiedTests) {
-            runCqlBenchmarks(getJmhBuilder(), outputs);
-        }
 
         File file = new File("benchmark.json");
         ObjectMapper objectMapper = new ObjectMapper();
