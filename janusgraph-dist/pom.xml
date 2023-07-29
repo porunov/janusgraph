@@ -605,7 +605,6 @@
                                         <argument>${project.version}</argument>
                                         <argument>${docker.baseimage}</argument>
                                         <argument>${packname.standard}</argument>
-                                        <argument>no-push</argument>
                                         <argument>${docker.tag-suffix}</argument>
                                     </arguments>
                                 </configuration>
@@ -638,8 +637,8 @@
                                         <argument>${project.version}</argument>
                                         <argument>${docker.baseimage}</argument>
                                         <argument>${packname.standard}</argument>
-                                        <argument>push</argument>
                                         <argument>${docker.tag-suffix}</argument>
+                                        <argument>push</argument>
                                     </arguments>
                                 </configuration>
                             </execution>

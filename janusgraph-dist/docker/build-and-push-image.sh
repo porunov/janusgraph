@@ -16,27 +16,25 @@
 
 set -e
 
-if [ "$#" -lt "3" ]; then
-  echo "usage: build-and-push-image.sh version base-image build-path push/no-push tag-suffix"
+if [ "$#" -gt "4" ]; then
+  echo "usage: build-and-push-image.sh version base-image build-path tag-suffix [push]"
   exit 1
 fi
 
 JANUS_VERSION=$1
 BASE_IMAGE=$2
 BUILD_PATH=$3
-TAG_SUFFIX=${5:-}
-PUSH="${4:-no-push}"
+TAG_SUFFIX=$4
+PUSH="${5:-false}"
 
 REVISION="$(git rev-parse --short HEAD)"
 CREATED="$(date -u +”%Y-%m-%dT%H:%M:%SZ”)"
-DOCKERHUB_IMAGE_NAME="docker.io/janusgraph/janusgraph"
-GHCR_IMAGE_NAME="ghcr.io/janusgraph/janusgraph"
+IMAGE_NAME="docker.io/janusgraph/janusgraph"
 PLATFORMS="linux/amd64,linux/arm64"
 
 echo "REVISION: ${REVISION}"
 echo "CREATED: ${CREATED}"
-echo "DOCKERHUB_IMAGE_NAME: ${DOCKERHUB_IMAGE_NAME}"
-echo "GHCR_IMAGE_NAME: ${GHCR_IMAGE_NAME}"
+echo "IMAGE_NAME: ${IMAGE_NAME}"
 echo "JANUS_VERSION: ${JANUS_VERSION}"
 echo "BASE_IMAGE: ${BASE_IMAGE}"
 echo "BUILD_PATH: ${BUILD_PATH}"
@@ -44,13 +42,7 @@ echo "TAG_SUFFIX: ${TAG_SUFFIX}"
 
 # enable buildkit
 export DOCKER_BUILDKIT=1
-TAGS=()
-BUILD_ARGS=()
-BUILD_ARGS+=("JANUS_VERSION=$JANUS_VERSION")
-BUILD_ARGS+=("REVISION=$REVISION")
-BUILD_ARGS+=("CREATED=$CREATED")
-BUILD_ARGS+=("BUILD_PATH=$BUILD_PATH")
-BUILD_ARGS+=("BASE_IMAGE=$BASE_IMAGE")
+
 ARGS=""
 if [[ $PUSH == "push" ]]; then
     ARGS="${ARGS} --push"
@@ -59,27 +51,11 @@ if [[ $MULTI_PLATFORM == "true" ]]; then
     ARGS="${ARGS} --platform ${PLATFORMS}"
 fi
 if [[ $LATEST == "true" ]] && [[ $TAG_SUFFIX == "" ]]; then
-    TAGS+=('latest')
+    ARGS="${ARGS} -t ${IMAGE_NAME}:latest"
 fi
-if [[ $JANUS_VERSION == *-* ]]; then
-    echo "no full release"
-else
-    MINOR_VERSION=$(echo "${JANUS_VERSION}" | grep -Eo '[0-9]+\.[0-9]+' | head -1)
-    echo "full release ${MINOR_VERSION}"
-    TAGS+=("${MINOR_VERSION}${TAG_SUFFIX}")
-fi
-TAGS+=("${JANUS_VERSION}${TAG_SUFFIX}")
-TAGS+=("${JANUS_VERSION}-${REVISION}${TAG_SUFFIX}")
-for BUILD_ARG in "${BUILD_ARGS[@]}"
-do
-    ARGS="${ARGS} --build-arg ${BUILD_ARG}"
-done
-for TAG in "${TAGS[@]}"
-do
-    ARGS="${ARGS} -t ${DOCKERHUB_IMAGE_NAME}:${TAG} -t ${GHCR_IMAGE_NAME}:${TAG}"
-done
+ARGS="${ARGS} -t ${IMAGE_NAME}:${JANUS_VERSION}${TAG_SUFFIX} -t ${IMAGE_NAME}:${JANUS_VERSION}${TAG_SUFFIX}-${REVISION}"
 
 # build and push the multi-arch image
 # unfortunately, when building a multi-arch image, we have to push it right after building it,
 # rather than save locally and then push it. see https://github.com/docker/buildx/issues/166
-docker buildx build -f "docker/Dockerfile" ${ARGS} .
+docker buildx build -f "docker/Dockerfile" --build-arg JANUS_VERSION="$JANUS_VERSION" --build-arg REVISION="$REVISION" --build-arg CREATED="$CREATED" --build-arg BUILD_PATH="$BUILD_PATH" --build-arg BASE_IMAGE="$BASE_IMAGE" ${ARGS} .
