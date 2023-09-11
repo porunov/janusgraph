@@ -59,7 +59,8 @@
         <tinkerpop.version>3.7.0</tinkerpop.version>
         <junit-platform.version>1.10.0</junit-platform.version>
         <junit.version>5.10.0</junit.version>
-        <mockito.version>4.11.0</mockito.version>
+        <mockito.version>5.5.0</mockito.version>
+        <mockitoinline.version>5.2.0</mockitoinline.version>
         <jamm.version>0.3.3</jamm.version>
         <metrics.version>4.2.19</metrics.version>
         <slf4j.version>1.7.36</slf4j.version>
@@ -913,7 +914,7 @@
             <dependency>
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-inline</artifactId>
-                <version>${mockito.version}</version>
+                <version>${mockitoinline.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.mockito</groupId>
