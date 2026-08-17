@@ -75,6 +75,8 @@ import org.janusgraph.graphdb.util.MultiSliceQueriesGroupingUtil;
 import org.janusgraph.util.IDUtils;
 import org.janusgraph.graphdb.database.index.IndexInfoRetriever;
 import org.janusgraph.graphdb.database.index.IndexUpdate;
+import org.janusgraph.graphdb.database.util.IndexAppliesToFunction;
+import org.janusgraph.graphdb.database.util.IndexRecordUtil;
 import org.janusgraph.graphdb.database.log.LogTxStatus;
 import org.janusgraph.graphdb.database.log.TransactionLogHeader;
 import org.janusgraph.graphdb.database.management.ManagementLogger;
@@ -103,6 +105,7 @@ import org.janusgraph.graphdb.transaction.StandardJanusGraphTx;
 import org.janusgraph.graphdb.transaction.StandardTransactionBuilder;
 import org.janusgraph.graphdb.transaction.TransactionConfiguration;
 import org.janusgraph.graphdb.types.CompositeIndexType;
+import org.janusgraph.graphdb.types.IndexType;
 import org.janusgraph.graphdb.types.MixedIndexType;
 import org.janusgraph.graphdb.types.system.BaseKey;
 import org.janusgraph.graphdb.types.system.BaseRelationType;
@@ -172,6 +175,34 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
     }
 
     private final GraphDatabaseConfiguration config;
+    /** Backing index names configured as cdc-only (index.[X].cdc.enabled=true and cdc.synchronous=false):
+     *  their mixed-index mutations are skipped on the synchronous commit path and applied asynchronously
+     *  by the CDC pipeline (janusgraph-cdc worker) instead. */
+    private final Set<String> cdcOnlyBackingIndexes;
+    /** The index filter used when generating commit-time index updates for ADDED relations and mutated properties:
+     *  standard applicability ({@link IndexRecordUtil#FULL_INDEX_APPLIES_TO_FILTER}) minus the mixed indexes on
+     *  cdc-only backends -- their updates are filtered out at GENERATION (not just skipped at write time) so the hot
+     *  commit path never pays for serializing entries that would only be discarded. Composite indexes are never
+     *  filtered. Reindex/repair jobs and transaction recovery use their own filters and are unaffected -- they still
+     *  write cdc-only indexes. */
+    private final IndexAppliesToFunction commitIndexAppliesToFilter;
+    /** The index filter for DELETED relations whose documents the CDC stream cannot identify (see
+     *  {@link #cdcCanIdentifyDeletedRelation}, which selects between this and {@link #commitIndexAppliesToFilter}
+     *  per deleted relation). Like {@link #commitIndexAppliesToFilter}, but relation-element (edge / meta-property)
+     *  mixed indexes on cdc-only backends are NOT filtered: those document DELETIONS stay synchronous even in
+     *  cdc-only mode. The CDC pipeline can always rebuild ADDED/updated documents from the element's current state,
+     *  but it cannot identify a deleted relation's document when no change event carries the relation identity --
+     *  Cassandra tombstones carry no value bytes (constrained-multiplicity edge ids and meta-property ids live in
+     *  the value region), and a whole-row vertex removal ({@code storage.drop-whole-row-on-vertex-removal}) emits
+     *  one partition-level delete with no per-edge identity at all (self-loops, unidirected edges, and edges whose
+     *  both endpoints are removed in one transaction have no surviving mirror event either). Those identities only
+     *  exist HERE, at commit time, so this is where their document removals are issued; a removal is idempotent
+     *  under the CDC applier's reindex-from-current-state, so late CDC events for the same relation converge to the
+     *  same result. Deleted relations whose id is re-added by the same transaction (updates) are exempt from the
+     *  synchronous removal -- their document id stays live and the worker rewrites it from current state, and a
+     *  synchronous whole-document delete could otherwise land after that rewrite (e.g. a delayed index write) and
+     *  erase the fresh document with no later event to restore it. */
+    private final IndexAppliesToFunction commitDeletionIndexAppliesToFilter;
     private final Backend backend;
     private final IDManager idManager;
     private final boolean wholeRowDeletionEnabled;
@@ -212,6 +243,27 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
     public StandardJanusGraph(GraphDatabaseConfiguration configuration) {
 
         this.config = configuration;
+        this.cdcOnlyBackingIndexes =
+            GraphDatabaseConfiguration.getCdcBackingIndexNames(configuration.getConfiguration(), true);
+        this.commitIndexAppliesToFilter = cdcOnlyBackingIndexes.isEmpty()
+            ? IndexRecordUtil.FULL_INDEX_APPLIES_TO_FILTER
+            : (index, element) -> IndexRecordUtil.indexAppliesTo(index, element) && !isCdcOnlyMixedIndex(index);
+        this.commitDeletionIndexAppliesToFilter = cdcOnlyBackingIndexes.isEmpty()
+            ? IndexRecordUtil.FULL_INDEX_APPLIES_TO_FILTER
+            : (index, element) -> IndexRecordUtil.indexAppliesTo(index, element)
+                && (!isCdcOnlyMixedIndex(index) || index.getElement().isRelation());
+        if (!cdcOnlyBackingIndexes.isEmpty()) {
+            // There is no way to validate from here that a capture pipeline (e.g. Cassandra CDC + Debezium + Kafka +
+            // the janusgraph-cdc worker) is actually running, so make the trade-off loud: with cdc-only configured and
+            // no pipeline, mixed indexes silently stop being maintained (and the WAL records these transactions as
+            // fully successful, so transaction recovery will not repair them either).
+            log.warn("Mixed index backend(s) {} are configured cdc-only (index.[X].cdc.enabled=true and "
+                + "index.[X].cdc.synchronous=false): synchronous index additions are SKIPPED for them (only "
+                + "relation-document deletions that CDC events cannot identify are still written synchronously). "
+                + "Ensure the external CDC pipeline and the janusgraph-cdc worker are running, otherwise these "
+                + "indexes will not be updated.",
+                cdcOnlyBackingIndexes);
+        }
         this.backend = configuration.getBackend();
 
         this.name = configuration.getGraphName();
@@ -721,7 +773,14 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
         if (isBigDataSetLoggingEnabled) {
             logForPrepareCommit.debug("1. Collect deleted edges and their index updates and acquire edge locks");
         }
-        prepareCommitDeletes(deletedRelations, filter, mutator, tx, acquireLocks, mutations, mutatedProperties, indexUpdates);
+        // Ids of the relations added in this same transaction: a deleted relation whose id is re-added is an
+        // UPDATE (the replacement keeps the relation id unless the type has ConsistencyModifier.FORK), meaning its
+        // index document id stays live. Only computed when cdc-only indexes exist -- it feeds the per-relation
+        // deletion-filter choice below.
+        final Set<Long> replacedRelationIds = cdcOnlyBackingIndexes.isEmpty() || deletedRelations.isEmpty()
+            ? Collections.emptySet() : collectRelationIds(addedRelations);
+        prepareCommitDeletes(deletedRelations, replacedRelationIds, filter, mutator, tx, acquireLocks, mutations,
+            mutatedProperties, indexUpdates);
 
         if (isBigDataSetLoggingEnabled) {
             logForPrepareCommit.debug("2. Collect added edges and their index updates and acquire edge locks");
@@ -759,6 +818,7 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
      * Collect deleted edges and their index updates and acquire edge locks
      */
     private void prepareCommitDeletes(final Collection<InternalRelation> deletedRelations,
+                                      final Set<Long> replacedRelationIds,
                                       final Predicate<InternalRelation> filter,
                                       final BackendTransaction mutator,
                                       final StandardJanusGraphTx tx,
@@ -782,8 +842,80 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
                     mutator.acquireEdgeLock(idManager.getKey(vertex.id()), entry);
                 }
             }
-            indexUpdates.addAll(indexSerializer.getIndexUpdates(del, tx));
+            // The widened deletion filter (synchronous cdc-only relation-document removals) is applied only when the
+            // CDC stream cannot identify this relation's document. When a surviving endpoint's row keeps an ordinary
+            // column tombstone carrying the full edge identity (the "mirror" copy), the CDC worker performs the
+            // removal instead and the commit path stays free of redundant index deletes -- for a super-node removal
+            // with surviving neighbors that is the difference between zero synchronous index operations and one per
+            // incident edge. A deleted relation whose id this same transaction RE-ADDS (an update; the replacement
+            // keeps the relation id unless the type is ConsistencyModifier.FORK) must not be deleted synchronously
+            // either: its document id stays live, and the worker rewrites that document from current state -- a
+            // synchronous whole-document delete could land AFTER the worker's rewrite (e.g. a delayed index write)
+            // and erase it with no later event to restore it. Skipping leaves the document briefly stale (ordinary
+            // CDC lag) instead of indefinitely missing.
+            final IndexAppliesToFunction deletionFilter =
+                cdcOnlyBackingIndexes.isEmpty() || cdcCanIdentifyDeletedRelation(del, tx)
+                    || replacedRelationIds.contains(del.longId())
+                    ? commitIndexAppliesToFilter : commitDeletionIndexAppliesToFilter;
+            indexUpdates.addAll(indexSerializer.getIndexUpdates(del, deletionFilter, tx));
         }
+    }
+
+    /** The assigned ids of the given relations (used to recognize deleted relations that are re-added -- i.e.
+     *  updated -- within the same transaction). */
+    private static Set<Long> collectRelationIds(final Collection<InternalRelation> relations) {
+        if (relations.isEmpty()) {
+            return Collections.emptySet();
+        }
+        final Set<Long> ids = new HashSet<>(relations.size() * 2);
+        for (InternalRelation relation : relations) {
+            if (relation.hasId()) {
+                ids.add(relation.longId());
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Whether the CDC pipeline will be able to identify this deleted relation's index document from the change
+     * events this transaction produces: true iff at least one storage copy of the relation is removed via a
+     * per-column tombstone whose <em>column</em> carries the full relation identity. That holds only for
+     * non-constrained (MULTI-multiplicity) edges with at least one incident vertex that is not itself fully removed
+     * in this transaction -- the surviving vertex's row receives an ordinary column tombstone for the edge (its
+     * mirror copy), from which the CDC decoder reconstructs the exact {@code RelationIdentifier}. Everything else
+     * produces no identifying event and needs the synchronous document removal: vertex properties and
+     * constrained-multiplicity edges keep their relation id in the <em>value</em> region (absent from tombstones);
+     * unidirected edges store no mirror; and when every copy-holding endpoint is fully removed, its row is either
+     * whole-row-deleted (one partition tombstone, no columns) or its column tombstones are indistinguishable noise
+     * behind the same removal.
+     *
+     * <p>Deliberately independent of {@link #wholeRowDeletionEnabled}: with whole-row deletion off, fully-removed
+     * vertices do emit per-column tombstones and the synchronous removal is merely redundant (idempotent under the
+     * worker's reindex-from-current-state) -- preferred over coupling the index guarantee to a storage feature flag.</p>
+     */
+    private boolean cdcCanIdentifyDeletedRelation(final InternalRelation del, final StandardJanusGraphTx tx) {
+        if (!del.isEdge()) {
+            return false;
+        }
+        final InternalRelationType type = (InternalRelationType) del.getType();
+        if (type.multiplicity().isConstrained()) {
+            return false;
+        }
+        for (int pos = 0; pos < del.getArity(); pos++) {
+            // Same predicate the mutation writer uses: a storage copy exists at this position iff the type covers
+            // its direction (normal edges store a copy at both endpoints; unidirected ones only at the out-vertex).
+            if (!type.isUnidirected(Direction.BOTH) && !type.isUnidirected(EdgeDirection.fromPosition(pos))) {
+                continue;
+            }
+            final Object vertexId = del.getVertex(pos).id();
+            final Object canonicalId = idManager.isPartitionedVertex(vertexId)
+                ? idManager.getCanonicalVertexId(((Number) vertexId).longValue())
+                : vertexId;
+            if (!tx.isVertexFullyRemoved(canonicalId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -813,7 +945,7 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
                     mutator.acquireEdgeLock(idManager.getKey(vertex.id()), entry.getColumn());
                 }
             }
-            indexUpdates.addAll(indexSerializer.getIndexUpdates(add, tx));
+            indexUpdates.addAll(indexSerializer.getIndexUpdates(add, commitIndexAppliesToFilter, tx));
         }
     }
 
@@ -824,7 +956,7 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
                                                  final StandardJanusGraphTx tx,
                                                  final List<IndexUpdate> indexUpdates) {
         indexUpdates.addAll(mutatedProperties.keySet().parallelStream()
-            .flatMap(v -> indexSerializer.getIndexUpdates(v, mutatedProperties.get(v), tx))
+            .flatMap(v -> indexSerializer.getIndexUpdates(v, mutatedProperties.get(v), commitIndexAppliesToFilter, tx))
             .collect(Collectors.toList()));
     }
 
@@ -909,6 +1041,11 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
         }
     }
 
+    /** Whether this is a mixed index on a cdc-only backend, i.e. one whose synchronous updates are not generated. */
+    private boolean isCdcOnlyMixedIndex(IndexType index) {
+        return index.isMixedIndex() && cdcOnlyBackingIndexes.contains(((MixedIndexType) index).getBackingIndexName());
+    }
+
     /**
      * Add index updates
      *
@@ -926,6 +1063,9 @@ public class StandardJanusGraph extends JanusGraphBlueprintsGraph {
                     mutator.mutateIndex(update.getKey(), KeyColumnValueStore.NO_ADDITIONS, Collections.singletonList(update.getEntry()));
             } else {
                 final IndexUpdate<String,IndexEntry> update = indexUpdate;
+                // cdc-only mixed indexes reach this loop only for relation-document DELETIONS (see
+                // commitDeletionIndexAppliesToFilter); their additions/refreshes were excluded at generation and are
+                // applied asynchronously by the CDC worker instead.
                 has2iMods = true;
                 IndexTransaction itx = mutator.getIndexTransaction(update.getIndex().getBackingIndexName());
                 String indexStore = ((MixedIndexType)update.getIndex()).getStoreName();

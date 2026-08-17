@@ -15,6 +15,7 @@
 package org.janusgraph.diskstorage.cql;
 
 import com.datastax.oss.driver.api.core.AllNodesFailedException;
+import com.datastax.oss.driver.api.core.CqlIdentifier;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
 import com.datastax.oss.driver.api.core.cql.BatchableStatement;
@@ -24,6 +25,7 @@ import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.datastax.oss.driver.api.core.metadata.TokenMap;
+import com.datastax.oss.driver.api.core.metadata.schema.RelationMetadata;
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException;
 import com.datastax.oss.driver.api.core.servererrors.ServerError;
 import com.datastax.oss.driver.api.core.type.DataTypes;
@@ -40,6 +42,7 @@ import io.vavr.collection.Iterator;
 import io.vavr.control.Try;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.janusgraph.core.JanusGraphException;
+import org.janusgraph.diskstorage.Backend;
 import org.janusgraph.diskstorage.BackendException;
 import org.janusgraph.diskstorage.Entry;
 import org.janusgraph.diskstorage.EntryList;
@@ -225,6 +228,17 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore, SplittableSc
                     throw new JanusGraphException("Interrupted while waiting for table initialization to complete", e);
                 }
             }
+        }
+        if (configuration.get(CQLConfigOptions.CDC) && Backend.EDGESTORE_NAME.equals(tableName)) {
+            // storage.cql.cdc only takes effect when JanusGraph CREATES the table; a pre-existing edgestore must be
+            // ALTERed manually (see the CDC documentation). Detect the divergence -- configuration says capture, the
+            // live table says no -- because it is otherwise completely silent: commits succeed, no CDC events are
+            // produced, and cdc-only mixed indexes simply go stale. Deliberately checked after BOTH branches above:
+            // when schema metadata is unavailable (storage.cql.metadata.schema-enabled=false or restricted
+            // permissions), shouldInitializeTable() falls back to true and the CREATE ... IF NOT EXISTS silently
+            // no-ops on a pre-existing table WITHOUT applying cdc=true -- exactly the divergence this check exists
+            // to surface.
+            warnIfCdcTableOptionInactive();
         }
 
         this.scanPerPartitionLimitEnabled = configuration.get(SCAN_PER_PARTITION_LIMIT_ENABLED);
@@ -417,6 +431,38 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore, SplittableSc
             .orElse(true);
     }
 
+    private void warnIfCdcTableOptionInactive() {
+        try {
+            final java.util.Optional<com.datastax.oss.driver.api.core.metadata.schema.TableMetadata> table =
+                this.session.getMetadata().getKeyspace(this.storeManager.getKeyspaceName())
+                    .flatMap(keyspace -> keyspace.getTable(this.tableName));
+            if (!table.isPresent()) {
+                log.warn("storage.cql.cdc is enabled, but the '{}' table's schema metadata is unavailable "
+                    + "(schema metadata disabled or insufficient permissions), so it cannot be verified that the "
+                    + "table carries the cdc=true option. If the table pre-existed this graph configuration, run "
+                    + "\"ALTER TABLE {}.{} WITH cdc = true;\" once against the cluster -- without it NO change "
+                    + "events are captured.",
+                    this.tableName, this.storeManager.getKeyspaceName(), this.tableName);
+            } else if (!tableHasCdcEnabled(table.get())) {
+                log.warn("storage.cql.cdc is enabled, but the existing table '{}' in keyspace '{}' does NOT "
+                    + "have the cdc=true table option: the option is only applied when JanusGraph creates the "
+                    + "table, so NO change events are captured for this graph. Run \"ALTER TABLE {}.{} WITH "
+                    + "cdc = true;\" once against the cluster to activate CDC.",
+                    this.tableName, this.storeManager.getKeyspaceName(),
+                    this.storeManager.getKeyspaceName(), this.tableName);
+            }
+        } catch (RuntimeException e) {
+            // Metadata inspection is best-effort diagnostics only; never let it interfere with opening the store.
+            log.debug("Could not inspect the cdc table option of '{}'", this.tableName, e);
+        }
+    }
+
+    /** Whether the live table's {@code cdc} option is enabled. Package-private for unit tests. A missing option
+     *  (older Cassandra, or metadata not exposing it) counts as disabled -- events are not being captured either way. */
+    static boolean tableHasCdcEnabled(final RelationMetadata table) {
+        return Boolean.TRUE.equals(table.getOptions().get(CqlIdentifier.fromInternal("cdc")));
+    }
+
     private static int getCassandraMajorVersion(final CqlSession session) {
         try {
             ResultSet rs = session.execute("SELECT release_version FROM system.local");
@@ -430,6 +476,16 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore, SplittableSc
 
     private static void initializeTable(final CqlSession session, final String keyspaceName, final String tableName, final Configuration configuration) {
         int cassandraMajorVersion = getCassandraMajorVersion(session);
+        CreateTableWithOptions createTable = buildCreateTable(keyspaceName, tableName, configuration, cassandraMajorVersion);
+        session.execute(createTable.build());
+    }
+
+    /**
+     * Builds the {@code CREATE TABLE} statement for a JanusGraph store. Package-private and side-effect free so the
+     * table options (including Cassandra CDC) can be asserted in unit tests without a live Cassandra cluster.
+     */
+    static CreateTableWithOptions buildCreateTable(final String keyspaceName, final String tableName,
+                                                   final Configuration configuration, final int cassandraMajorVersion) {
         CreateTableWithOptions createTable = createTable(keyspaceName, tableName)
                 .ifNotExists()
                 .withPartitionKey(KEY_COLUMN_NAME, DataTypes.BLOB)
@@ -441,7 +497,13 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore, SplittableSc
         createTable = gcGraceSeconds(createTable, configuration);
         createTable = speculativeRetryOptions(createTable, configuration);
 
-        session.execute(createTable.build());
+        // Cassandra CDC is only meaningful on the edgestore table, whose mutations imply mixed-index changes.
+        // Composite-index data (graphindex) and system stores are not relevant to mixed-index synchronization.
+        if (configuration.get(CQLConfigOptions.CDC) && Backend.EDGESTORE_NAME.equals(tableName)) {
+            createTable = createTable.withCDC(true);
+        }
+
+        return createTable;
     }
 
     private static CreateTableWithOptions compressionOptions(final CreateTableWithOptions createTable,
