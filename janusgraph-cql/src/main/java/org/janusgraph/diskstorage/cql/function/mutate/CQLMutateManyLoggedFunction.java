@@ -58,6 +58,7 @@ public class CQLMutateManyLoggedFunction extends AbstractCQLMutateManyFunction i
 
         BatchStatementBuilder builder = BatchStatement.builder(DefaultBatchType.LOGGED);
         builder.setConsistencyLevel(getTransaction(txh).getWriteConsistencyLevel());
+        builder.setIdempotence(batchIdempotence);
 
         mutations.forEach((tableName, tableMutations) -> {
             final CQLKeyColumnValueStore columnValueStore = getColumnValueStore(tableName);

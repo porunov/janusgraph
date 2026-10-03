@@ -24,6 +24,7 @@ import com.datastax.oss.driver.api.core.cql.BoundStatementBuilder;
 import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.cql.SimpleStatement;
 import com.datastax.oss.driver.api.core.metadata.TokenMap;
 import com.datastax.oss.driver.api.core.metadata.schema.RelationMetadata;
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException;
@@ -301,24 +302,24 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore, SplittableSc
         }
 
         final DeleteSelection deleteSelection = addUsingTimestamp(deleteFrom(this.storeManager.getKeyspaceName(), this.tableName));
-        this.deleteColumn = this.session.prepare(deleteSelection
+        this.deleteColumn = this.session.prepare(idempotentIfTimestamped(deleteSelection
                 .whereColumn(KEY_COLUMN_NAME).isEqualTo(bindMarker(KEY_BINDING))
                 .whereColumn(COLUMN_COLUMN_NAME).isEqualTo(bindMarker(COLUMN_BINDING))
-                .build());
+                .build()));
 
         final DeleteSelection deleteRowSelection = addUsingTimestamp(deleteFrom(this.storeManager.getKeyspaceName(), this.tableName));
-        this.deleteRow = this.session.prepare(deleteRowSelection
+        this.deleteRow = this.session.prepare(idempotentIfTimestamped(deleteRowSelection
                 .whereColumn(KEY_COLUMN_NAME).isEqualTo(bindMarker(KEY_BINDING))
-                .build());
+                .build()));
 
         final Insert insertColumnInsert = addUsingTimestamp(insertInto(this.storeManager.getKeyspaceName(), this.tableName)
                 .value(KEY_COLUMN_NAME, bindMarker(KEY_BINDING))
                 .value(COLUMN_COLUMN_NAME, bindMarker(COLUMN_BINDING))
                 .value(VALUE_COLUMN_NAME, bindMarker(VALUE_BINDING)));
-        this.insertColumn = this.session.prepare(insertColumnInsert.build());
+        this.insertColumn = this.session.prepare(idempotentIfTimestamped(insertColumnInsert.build()));
 
         if (storeManager.getFeatures().hasCellTTL()) {
-            this.insertColumnWithTTL = this.session.prepare(insertColumnInsert.usingTtl(bindMarker(TTL_BINDING)).build());
+            this.insertColumnWithTTL = this.session.prepare(idempotentIfTimestamped(insertColumnInsert.usingTtl(bindMarker(TTL_BINDING)).build()));
         } else {
             this.insertColumnWithTTL = null;
         }
@@ -378,6 +379,17 @@ public class CQLKeyColumnValueStore implements KeyColumnValueStore, SplittableSc
         return this.session.getMetadata().getTokenMap()
             .map(tokenMap -> tokenMap.getPartitionerName().contains("Murmur3"))
             .orElse(false);
+    }
+
+    /**
+     * The query builder marks an INSERT or a DELETE without conditions idempotent. A write is idempotent only while it
+     * binds its timestamp, though: sent again, it then writes the same cells with the same timestamp. A write without
+     * one leaves the timestamp to the driver or the server, so its flag is cleared and the driver's default applies.
+     * The driver reads the flag of a statement executed on its own; of a batch, it reads only the batch's flag, which
+     * the mutate functions set under the same condition.
+     */
+    private SimpleStatement idempotentIfTimestamped(SimpleStatement write) {
+        return write.setIdempotent(storeManager.isAssignTimestamp() ? Boolean.TRUE : null);
     }
 
     private DeleteSelection addUsingTimestamp(DeleteSelection deleteSelection) {

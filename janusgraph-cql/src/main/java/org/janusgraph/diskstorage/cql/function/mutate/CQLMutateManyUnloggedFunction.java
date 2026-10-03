@@ -89,6 +89,7 @@ public class CQLMutateManyUnloggedFunction extends AbstractCQLMutateManyFunction
                 BatchStatement.newInstance(DefaultBatchType.UNLOGGED)
                     .addAll(group)
                     .setConsistencyLevel(getTransaction(txh).getWriteConsistencyLevel())
+                    .setIdempotent(batchIdempotence)
             ).whenComplete((asyncResultSet, throwable) -> queryBackPressure.releaseAfterQuery()).toCompletableFuture();
         } catch (RuntimeException e){
             queryBackPressure.releaseAfterQuery();
