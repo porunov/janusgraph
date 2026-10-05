@@ -123,6 +123,29 @@ public class OrderList implements Comparator<JanusGraphElement>, Iterable<OrderL
     }
 
     /**
+     * The values of the element by which this order compares it, one for each of its keys, read once, so that
+     * {@link #compareValues(Object[], Object[])} compares elements without reading them again.
+     */
+    public Object[] values(JanusGraphElement element) {
+        final Object[] values = new Object[list.size()];
+        for (int i = 0; i < values.length; i++) {
+            values[i] = element.valueOrNull(list.get(i).getKey());
+        }
+        return values;
+    }
+
+    /**
+     * Compares two elements by their {@link #values(JanusGraphElement)}, as {@link #compare} compares them.
+     */
+    public int compareValues(Object[] values1, Object[] values2) {
+        for (int i = 0; i < list.size(); i++) {
+            final int cmp = list.get(i).compareValues(values1[i], values2[i]);
+            if (cmp != 0) return cmp;
+        }
+        return 0;
+    }
+
+    /**
      * @author Matthias Broecheler (me@matthiasb.com)
      */
 
@@ -153,8 +176,11 @@ public class OrderList implements Comparator<JanusGraphElement>, Iterable<OrderL
 
         @Override
         public int compare(JanusGraphElement o1, JanusGraphElement o2) {
-            Object v1 = o1.valueOrNull(key);
-            Object v2 = o2.valueOrNull(key);
+            return compareValues(o1.valueOrNull(key), o2.valueOrNull(key));
+        }
+
+        //A missing value comes last, in either direction
+        int compareValues(Object v1, Object v2) {
             if (v1 == null || v2 == null) {
                 if (v1 == null && v2 == null) return 0;
                 else if (v1 == null) return 1;
